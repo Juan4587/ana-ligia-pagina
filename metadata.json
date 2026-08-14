@@ -1,0 +1,6 @@
+{
+  "name": "Portal Legislativo Ana Ligia Mora",
+  "description": "Portal interactivo de la Congresista Ana Ligia Mora Martínez con su agenda legislativa, simulador de impacto, asistente de IA y buzón de peticiones PQRSD.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
