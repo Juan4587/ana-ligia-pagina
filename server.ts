@@ -761,7 +761,19 @@ async function startServer() {
       console.log('  └──────────────────────────────────────────────────────────────────────┘');
     }
     if (db.listUsers().length === 0) {
-      console.warn('[Conf] No hay usuarios del Despacho. Cree el primero ejecutando: npx tsx scripts/seed_admin_user.ts');
+      const adminName  = process.env.ADMIN_NAME;
+      const adminEmail = process.env.ADMIN_EMAIL;
+      const adminPass  = process.env.ADMIN_PASSWORD;
+      if (adminName && adminEmail && adminPass) {
+        try {
+          db.createUser({ name: adminName, email: adminEmail, password: adminPass });
+          console.log(`[Conf] Usuario del Despacho creado automáticamente: ${adminEmail}`);
+        } catch (e) {
+          console.error('[Conf] Error al crear usuario inicial:', e);
+        }
+      } else {
+        console.warn('[Conf] No hay usuarios del Despacho. Defina ADMIN_NAME, ADMIN_EMAIL y ADMIN_PASSWORD en Railway para crearlos automáticamente.');
+      }
     }
     const periodEnd = process.env.PERIOD_END_DATE || '';
     console.log(`[Conf] Retención: anonimiza radicados inactivos tras ${retentionDays} días. Cierre de periodo: ${periodEnd || 'no definido'}.`);
