@@ -13,7 +13,11 @@ import path from 'path';
 import crypto from 'crypto';
 import { insertBill, listBills, uploadsBillsDir } from '../src/server/db.js';
 
-const SOURCE_DIR = 'C:\\Users\\esteb\\OneDrive\\Desktop\\Ana Ligia\\Proyectos de ley';
+const defaultSourceDir = fs.existsSync(path.resolve(process.cwd(), 'Proyectos de ley'))
+  ? path.resolve(process.cwd(), 'Proyectos de ley')
+  : path.resolve(process.cwd(), '..', 'Proyectos de ley');
+
+const SOURCE_DIR = process.env.BILLS_SOURCE_DIR || defaultSourceDir;
 
 const authors = ['Ana Ligia Mora Martínez', 'Daruin Castellanos Romero', 'Hernán Darío Cadavid Márquez'];
 
@@ -24,7 +28,7 @@ const BILLS = [
     title: 'Programa Nacional de Rentas Verdes — Incentivo a la Gestión Ambiental y Comunitaria de Corredores Verdes',
     dateFiled: '2026-07-29',
     status: 'Radicado',
-    proposalIdRelated: 'pagos-servicios-ambientales',
+    proposalIdRelated: 'ambiente',
     impactScore: 'Alto',
     summary:
       'Crea el Programa Nacional de Rentas Verdes: transferencias económicas condicionadas para que personas naturales y esquemas comunitarios (priorizando mujeres cabeza de familia, población joven y adultos mayores) desarrollen labores de limpieza, jardinería, monitoreo y protección de corredores verdes, parques, arbolado urbano y espacios públicos verdes, contribuyendo a la conectividad ecológica y a la adaptación al cambio climático.',
@@ -42,7 +46,7 @@ const BILLS = [
     title: 'Procedimiento de trámites ambientales para proyectos con Declaración de Utilidad Pública e Interés Social (DUP)',
     dateFiled: '2026-07-29',
     status: 'Radicado',
-    proposalIdRelated: 'tramites-ambientales-fast-track',
+    proposalIdRelated: 'ambiente',
     impactScore: 'Alto',
     summary:
       'Define un procedimiento ágil, estandarizado y soportado en herramientas digitales para la evaluación y decisión de trámites ambientales (licencia ambiental, concesiones de aguas, permisos y autorizaciones) de proyectos con Declaración de Utilidad Pública e Interés Social (DUP), garantizando el rigor técnico, el principio de prevención, la protección del medio ambiente y la seguridad jurídica de las inversiones.',
@@ -60,7 +64,7 @@ const BILLS = [
     title: 'Gestión de animales de especies domésticas con comportamiento silvestre (asilvestrados)',
     dateFiled: '2026-07-29',
     status: 'Radicado',
-    proposalIdRelated: 'areas-protegidas-incentivos',
+    proposalIdRelated: 'ambiente',
     impactScore: 'Medio',
     summary:
       'Adiciona un numeral al artículo 31 de la Ley 99 de 1993 para facultar a las Corporaciones Autónomas Regionales (CAR) y de Desarrollo Sostenible a intervenir y gestionar poblaciones de animales de especies domésticas con comportamiento silvestre (asilvestrados) que representen amenazas reales o potenciales para la salud pública ambiental, la biodiversidad y los ecosistemas estratégicos, adoptando medidas preventivas para evitar la generación de nuevas poblaciones que afecten los ecosistemas.',
@@ -78,7 +82,7 @@ const BILLS = [
     title: 'Pago por Servicios Agroecológicos (PSA-Eco) para el campesinado colombiano',
     dateFiled: '2026-07-29',
     status: 'Radicado',
-    proposalIdRelated: 'desarrollo-rural-jovenes',
+    proposalIdRelated: 'rural',
     impactScore: 'Alto',
     summary:
       'Crea el mecanismo de Pago por Servicios Agroecológicos (PSA-Eco): un incentivo económico directo, periódico y condicionado que reconoce, capitaliza y fomenta el emprendimiento rural y el cuidado ambiental en las comunidades campesinas que integran la producción de alimentos —sistemas agrícolas, pecuarios (porcícolas, avícolas, ganaderos, capricultura) y de especies menores de base ecológica— con tecnificación, productividad y uso sostenible de los ecosistemas, cuidado del suelo, agrobiodiversidad y gestión del recurso hídrico.',
@@ -96,7 +100,7 @@ const BILLS = [
     title: 'Territorios Sostenibles por el Agua (TESA)',
     dateFiled: '2026-07-29',
     status: 'Radicado',
-    proposalIdRelated: 'agua-energia',
+    proposalIdRelated: 'agua',
     impactScore: 'Alto',
     summary:
       'Crea la Estrategia de Territorios Sostenibles por el Agua (TESA) para la conservación, restauración y manejo integral de los ecosistemas hídricos del país: ríos, quebradas, humedales y demás fuentes de agua. Modifica el artículo 111 de la Ley 99 de 1993 para permitir destinar saldos no ejecutados de los recursos de protección hídrica a recuperar otros cuerpos de agua y conformar Ecoparques del Agua (EPA). Incluye Custodios del Agua y Guardianes TESO, Ecoparques del Agua y sistemas de alerta temprana.',

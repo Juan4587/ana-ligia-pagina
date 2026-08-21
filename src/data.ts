@@ -289,3 +289,28 @@ export const SIMULATOR_PROFILES: SimulatorProfile[] = [
 ];
 
 export const FILED_BILLS: FiledBill[] = [];
+
+/** Temas generales del eje legislativo para los proyectos de ley del Despacho. */
+export const BILL_TOPICS: { id: string; label: string }[] = [
+  { id: 'ambiente', label: 'Ambiente' },
+  { id: 'mineria', label: 'Minería' },
+  { id: 'rural', label: 'Rural y Agropecuario' },
+  { id: 'energia', label: 'Energía' },
+  { id: 'agua', label: 'Agua y Saneamiento' },
+  { id: 'social', label: 'Social' },
+  { id: 'control-politico', label: 'Control Político' },
+  { id: 'general', label: 'General' },
+];
+
+/** Resuelve la etiqueta de un eje legislativo (tema general) desde su id.
+ *  Soporta tanto los temas nuevos como los ids históricos de las 5 propuestas. */
+export function billAxisLabel(id: string | null | undefined): string {
+  if (!id || id === 'general') return 'General';
+  const topic = BILL_TOPICS.find((t) => t.id === id);
+  if (topic) return topic.label;
+  const proposal = PROPOSALS.find((p) => p.id === id);
+  if (!proposal) return 'General';
+  // Compatibilidad: categoría histórica de las propuestas → tema general
+  if (proposal.category === 'Rural') return 'Rural y Agropecuario';
+  return proposal.category;
+}

@@ -102,6 +102,7 @@ export interface FiledBill {
   hasFile?: boolean;
   filename?: string;
   size?: number;
+  supportCount?: number;
 }
 
 export interface AdminUser {

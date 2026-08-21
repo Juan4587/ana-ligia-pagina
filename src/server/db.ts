@@ -128,6 +128,34 @@ CREATE TABLE IF NOT EXISTS bills (
 );
 `);
 
+// Migración: convierte los ids históricos de propuestas a los temas generales
+// (nuevo sistema de "eje legislativo" del Despacho).
+const LEGACY_AXIS_MAP: Record<string, string> = {
+  'pagos-servicios-ambientales': 'ambiente',
+  'tramites-ambientales-fast-track': 'ambiente',
+  'areas-protegidas-incentivos': 'ambiente',
+  'desarrollo-rural-jovenes': 'rural',
+  'agua-energia': 'agua',
+};
+{
+  const legacyBills = db.prepare("SELECT id, proposalIdRelated FROM bills WHERE proposalIdRelated IN ('pagos-servicios-ambientales','tramites-ambientales-fast-track','areas-protegidas-incentivos','desarrollo-rural-jovenes','agua-energia')").all() as { id: number; proposalIdRelated: string }[];
+  const upd = db.prepare('UPDATE bills SET proposalIdRelated = ? WHERE id = ?');
+  for (const row of legacyBills) upd.run(LEGACY_AXIS_MAP[row.proposalIdRelated] ?? 'general', row.id);
+  if (legacyBills.length) console.log(`[db] ejes legislativos migrados a temas generales (${legacyBills.length}).`);
+}
+
+// Tabla de respaldos ciudadanos a los proyectos de ley.
+db.exec(`
+CREATE TABLE IF NOT EXISTS bill_supports (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_id    INTEGER NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  email      TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (bill_id, email)
+);
+`);
+
 /* ------------------------------------------------------------------ */
 /* Radicados                                                          */
 /* ------------------------------------------------------------------ */
@@ -409,12 +437,76 @@ export function getBillById(id: number): BillRow | undefined {
   return db.prepare('SELECT * FROM bills WHERE id = ?').get(id) as BillRow | undefined;
 }
 
+export function updateBill(id: number, data: {
+  status?: string;
+  stageDescription?: string;
+  proposalIdRelated?: string;
+  impactScore?: string;
+  title?: string;
+  number?: string;
+  dateFiled?: string;
+  summary?: string;
+  authors?: string[];
+  initiatives?: string[];
+}): BillRow | undefined {
+  const sets: string[] = [];
+  const params: Record<string, unknown> = { id };
+  if (data.status !== undefined) { sets.push('status = @status'); params.status = data.status; }
+  if (data.stageDescription !== undefined) { sets.push('stageDescription = @stageDescription'); params.stageDescription = data.stageDescription; }
+  if (data.proposalIdRelated !== undefined) { sets.push('proposalIdRelated = @proposalIdRelated'); params.proposalIdRelated = data.proposalIdRelated; }
+  if (data.impactScore !== undefined) { sets.push('impactScore = @impactScore'); params.impactScore = data.impactScore; }
+  if (data.title !== undefined) { sets.push('title = @title'); params.title = data.title; }
+  if (data.number !== undefined) { sets.push('number = @number'); params.number = data.number; }
+  if (data.dateFiled !== undefined) { sets.push('dateFiled = @dateFiled'); params.dateFiled = data.dateFiled; }
+  if (data.summary !== undefined) { sets.push('summary = @summary'); params.summary = data.summary; }
+  if (data.authors !== undefined) { sets.push('authors = @authors'); params.authors = JSON.stringify(data.authors); }
+  if (data.initiatives !== undefined) { sets.push('initiatives = @initiatives'); params.initiatives = JSON.stringify(data.initiatives); }
+  if (sets.length === 0) return getBillById(id);
+  db.prepare(`UPDATE bills SET ${sets.join(', ')} WHERE id = @id`).run(params);
+  return getBillById(id);
+}
+
 export function deleteBill(id: number): void {
   const bill = getBillById(id);
   if (bill?.stored_name) {
     fs.rm(path.join(UPLOADS_BILLS, bill.stored_name), { force: true }, () => {});
   }
   db.prepare('DELETE FROM bills WHERE id = ?').run(id);
+}
+
+/* ------------------------------------------------------------------ */
+/* Respaldos ciudadanos a proyectos de ley                            */
+/* ------------------------------------------------------------------ */
+
+export interface BillSupportRow {
+  id: number;
+  bill_id: number;
+  name: string;
+  email: string;
+  created_at: string;
+}
+
+/** Registra un respaldo. Devuelve null si el ciudadano ya apoyó ese proyecto (dedupe por email+bill). */
+export function insertBillSupport(data: { billId: number; name: string; email: string }): BillSupportRow | null {
+  const existing = db.prepare('SELECT id FROM bill_supports WHERE bill_id = ? AND email = ?').get(data.billId, data.email);
+  if (existing) return null;
+  const res = db
+    .prepare('INSERT INTO bill_supports (bill_id, name, email, created_at) VALUES (?, ?, ?, ?)')
+    .run(data.billId, data.name, data.email, new Date().toISOString());
+  return db.prepare('SELECT * FROM bill_supports WHERE id = ?').get(Number(res.lastInsertRowid)) as BillSupportRow;
+}
+
+export function countBillSupports(billId: number): number {
+  const row = db.prepare('SELECT COUNT(*) AS n FROM bill_supports WHERE bill_id = ?').get(billId) as { n: number };
+  return row?.n ?? 0;
+}
+
+export function listBillSupports(billId: number): BillSupportRow[] {
+  return db.prepare('SELECT * FROM bill_supports WHERE bill_id = ? ORDER BY created_at DESC').all(billId) as BillSupportRow[];
+}
+
+export function hasBillSupport(billId: number, email: string): boolean {
+  return Boolean(db.prepare('SELECT 1 FROM bill_supports WHERE bill_id = ? AND email = ?').get(billId, email));
 }
 
 /** Anonimiza automáticamente radicados sin tocar por más de N días (retención). */

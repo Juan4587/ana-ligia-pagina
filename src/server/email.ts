@@ -126,3 +126,38 @@ export async function sendResponseToCitizen(sub: EmailSubmission): Promise<boole
     return false;
   }
 }
+
+export async function sendBillSupportReceipt(opts: {
+  name: string;
+  email: string;
+  billNumber: string;
+  billTitle: string;
+}): Promise<boolean> {
+  if (!resend || !opts.email) return false;
+  const body =
+    `Estimado(a) ${opts.name},\n\n` +
+    `Recibimos con gusto su apoyo cívico a la iniciativa legislativa:\n\n` +
+    `  Proyecto: ${opts.billNumber}\n` +
+    `  Título: ${opts.billTitle}\n\n` +
+    `Su respaldo quedó registrado y ayuda a visibilizar la importancia territorial de esta iniciativa en el Congreso de la República.\n\n` +
+    `Para esta iniciativa legislativa, su registro de apoyo solo cumple fines de acompañamiento ciudadano y no constituye un trámite formal ante el Congreso.\n\n` +
+    `Atentamente,\nDepartamento Legislativo — Ana Ligia Mora Martínez.\n` +
+    `Sus datos personales están protegidos bajo la Ley 1581 de 2012 (Habeas Data) y se usan únicamente para este acompañamiento.`;
+
+  try {
+    const { error } = await resend.emails.send({
+      from: from(),
+      to: [opts.email],
+      subject: `Confirmación de respaldo — ${opts.billNumber}`,
+      text: body,
+    });
+    if (error) {
+      console.error('[email] Error confirmación respaldo:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[email] Error confirmación respaldo:', err);
+    return false;
+  }
+}

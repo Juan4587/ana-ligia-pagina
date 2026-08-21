@@ -11,9 +11,9 @@ import React from 'react';
 import {
   Lock, LogOut, Inbox, FileSpreadsheet, Search, Loader2, Eye, ShieldCheck,
   Trash2, Send, Check, Upload, Download, RefreshCw, Filter, Paperclip,
-  UserPlus, Users, ScrollText, KeyRound
+  UserPlus, Users, ScrollText, KeyRound, X
 } from 'lucide-react';
-import { PROPOSALS } from '../data';
+import { PROPOSALS, BILL_TOPICS, billAxisLabel } from '../data';
 import { PQRSDSubmission, PQRSDStatus, PQRSDType, FiledBill, BillStatus, AdminUser, AuditEntry } from '../types';
 
 const STORAGE_TOKEN = 'alm-admin-token';
@@ -49,6 +49,19 @@ function statusStyle(status: string) {
     case 'En Revisión': return 'bg-blue-100 text-blue-800 border-blue-200';
     case 'Asignado': return 'bg-purple-100 text-purple-800 border-purple-200';
     case 'Resuelto': return 'bg-green-100 text-green-800 border-green-200';
+    default: return 'bg-slate-100 text-slate-700 border-slate-200';
+  }
+}
+
+function billStatusStyle(status: string) {
+  switch (status) {
+    case 'Radicado': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    case 'Primer Debate': return 'bg-blue-100 text-blue-800 border-blue-200';
+    case 'Segundo Debate': return 'bg-cyan-100 text-cyan-800 border-cyan-200';
+    case 'Tercer Debate': return 'bg-purple-100 text-purple-800 border-purple-200';
+    case 'Cuarto Debate': return 'bg-violet-100 text-violet-800 border-violet-200';
+    case 'Sanción Presidencial': return 'bg-amber-100 text-amber-800 border-amber-200';
+    case 'Ley de la República': return 'bg-ant-blue-light text-ant-blue-dark border-ant-blue/20';
     default: return 'bg-slate-100 text-slate-700 border-slate-200';
   }
 }
@@ -99,6 +112,13 @@ export default function AdminPanel() {
   const [billFile, setBillFile] = React.useState<File | null>(null);
   const [billsLoading, setBillsLoading] = React.useState(false);
   const [uploadingBill, setUploadingBill] = React.useState(false);
+
+  // Respaldos ciudadanos por proyecto
+  const [supportsFor, setSupportsFor] = React.useState<{
+    billId: string; number: string; title: string;
+    supports: { id: number; name: string; email: string; createdAt: string }[];
+  } | null>(null);
+  const [supportsLoading, setSupportsLoading] = React.useState(false);
 
   // Usuarios del Despacho
   const [users, setUsers] = React.useState<AdminUser[]>([]);
@@ -358,6 +378,20 @@ export default function AdminPanel() {
     }
   };
 
+  const updateBillStatus = async (bill: FiledBill, status: BillStatus) => {
+    try {
+      const updated = await api(`/api/admin/bills/${bill.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      });
+      setNotice({ type: 'ok', text: `Estado de ${bill.number} actualizado a "${status}".` });
+      setBills((prev) => prev.map((b) => (b.id === bill.id ? updated : b)));
+      loadAudit();
+    } catch (err: any) {
+      setNotice({ type: 'err', text: err.message });
+    }
+  };
+
   const removeBill = async (bill: FiledBill) => {
     if (!confirm(`¿Eliminar el proyecto ${bill.number}?`)) return;
     try {
@@ -367,6 +401,18 @@ export default function AdminPanel() {
       loadAudit();
     } catch (err: any) {
       setNotice({ type: 'err', text: err.message });
+    }
+  };
+
+  const openSupports = async (bill: FiledBill) => {
+    setSupportsLoading(true);
+    try {
+      const data = await api(`/api/admin/bills/${bill.id}/supports`);
+      setSupportsFor({ billId: String(bill.id), number: bill.number, title: bill.title, supports: data.supports });
+    } catch (err: any) {
+      setNotice({ type: 'err', text: err.message });
+    } finally {
+      setSupportsLoading(false);
     }
   };
 
@@ -840,8 +886,8 @@ export default function AdminPanel() {
                     onChange={(e) => setBillForm({ ...billForm, proposalIdRelated: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-ant-blue focus:bg-white"
                   >
-                    <option value="general">General / Sin eje</option>
-                    {PROPOSALS.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+                    <option value="general">General / Sin tema</option>
+                    {BILL_TOPICS.filter((t) => t.id !== 'general').map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
@@ -924,7 +970,15 @@ export default function AdminPanel() {
                       <div className="min-w-0 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-[10px] font-mono font-black bg-slate-200 text-slate-700 px-2 py-0.5 rounded">{bill.number}</span>
-                          <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${statusStyle(bill.status)}`}>{bill.status}</span>
+                          <select
+                            value={bill.status}
+                            onChange={(e) => updateBillStatus(bill, e.target.value as BillStatus)}
+                            title="Actualizar estado del trámite"
+                            className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none focus:ring-1 focus:ring-ant-blue ${billStatusStyle(bill.status)}`}
+                          >
+                            {BILL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                          <span className="text-[9px] font-bold text-slate-400">{billAxisLabel(bill.proposalIdRelated)}</span>
                         </div>
                         <h5 className="text-sm font-bold text-slate-900 truncate">{bill.title}</h5>
                         <div className="flex items-center gap-3 text-[10px] text-slate-400">
@@ -934,6 +988,13 @@ export default function AdminPanel() {
                               <Paperclip className="h-3 w-3" /> Ver documento
                             </a>
                           )}
+                          <button
+                            onClick={() => openSupports(bill)}
+                            title="Ver respaldos ciudadanos"
+                            className="flex items-center gap-1 text-ant-blue-dark bg-ant-blue-light/60 hover:bg-ant-blue-light border border-ant-blue-light px-2 py-0.5 rounded-full font-bold transition-colors"
+                          >
+                            <Users className="h-3 w-3" /> {bill.supportCount ?? 0} respaldos
+                          </button>
                         </div>
                       </div>
                       <button
@@ -1106,6 +1167,50 @@ export default function AdminPanel() {
           </div>
         )}
       </div>
+
+      {/* Modal: respaldos ciudadanos de un proyecto */}
+      {supportsFor && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 backdrop-blur-sm flex justify-center items-center p-4">
+          <div className="relative bg-white rounded-3xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl border border-slate-200 p-6">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="min-w-0">
+                <h4 className="text-sm font-extrabold text-slate-900">Respaldos ciudadanos</h4>
+                <p className="text-xs text-slate-500 truncate">
+                  <span className="font-mono font-black">{supportsFor.number}</span> · {supportsFor.title}
+                </p>
+              </div>
+              <button
+                onClick={() => setSupportsFor(null)}
+                className="shrink-0 rounded-full bg-slate-100 p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-800 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {supportsLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-ant-blue" /></div>
+            ) : supportsFor.supports.length === 0 ? (
+              <div className="text-center py-10 text-slate-400">
+                <Users className="h-10 w-10 mx-auto text-slate-300 mb-2" />
+                <p className="text-sm font-semibold text-slate-500">Este proyecto aún no tiene respaldos ciudadanos.</p>
+                <p className="text-xs mt-1">Los ciudadanos registran su apoyo desde la página pública de la Agenda Legislativa.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {supportsFor.supports.map((s) => (
+                  <div key={s.id} className="flex items-start justify-between gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-800">{s.name}</p>
+                      <p className="text-xs text-slate-500">{s.email}</p>
+                    </div>
+                    <span className="text-[10px] text-slate-400 shrink-0">{new Date(s.createdAt).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

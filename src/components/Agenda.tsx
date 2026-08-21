@@ -9,7 +9,7 @@ import {
   Filter, ArrowUpRight, X, AlertCircle, FileText, BarChart3, CheckCircle2,
   Search, Calendar, FileSpreadsheet, Sparkles, Heart, Check, Users, MapPin, ChevronRight, Loader2
 } from 'lucide-react';
-import { PROPOSALS, FILED_BILLS } from '../data';
+import { PROPOSALS, FILED_BILLS, BILL_TOPICS, billAxisLabel } from '../data';
 import { Proposal, FiledBill } from '../types';
 
 export default function Agenda() {
@@ -25,19 +25,15 @@ export default function Agenda() {
   const [billFilterCategory, setBillFilterCategory] = React.useState<string>('Todos');
   const [selectedBill, setSelectedBill] = React.useState<FiledBill | null>(null);
   
-  // Signature backing state (local state tracker for civic support)
-  const [signedBills, setSignedBills] = React.useState<Record<string, { signed: boolean; name: string; count: number }>>({
-    'PL-112-2026': { signed: false, name: '', count: 1248 },
-    'PL-145-2026': { signed: false, name: '', count: 2450 },
-    'PL-098-2026': { signed: false, name: '', count: 3102 },
-    'PL-154-2026': { signed: false, name: '', count: 914 },
-    'PL-133-2026': { signed: false, name: '', count: 1877 },
-  });
+  // Signature backing state: proyectos que el ciudadano ya respaldó en esta sesión
+  const [signedBills, setSignedBills] = React.useState<Record<string, { name: string }>>({});
 
   const [signingName, setSigningName] = React.useState<string>('');
   const [signingEmail, setSigningEmail] = React.useState<string>('');
   const [signingBillId, setSigningBillId] = React.useState<string | null>(null);
   const [signSuccess, setSignSuccess] = React.useState<boolean>(false);
+  const [signError, setSignError] = React.useState<string>('');
+  const [signSubmitting, setSignSubmitting] = React.useState<boolean>(false);
 
   // Proyectos de ley dinámicos (subidos desde el panel del Despacho)
   const [bills, setBills] = React.useState<FiledBill[]>(FILED_BILLS);
@@ -53,6 +49,8 @@ export default function Agenda() {
 
   const categories = ['Todos', 'Ambiente', 'Rural'];
 
+  const billCategories = ['Todos', ...BILL_TOPICS.filter((t) => t.id !== 'general').map((t) => t.label)];
+
   const filteredProposals = selectedCategory === 'Todos'
     ? PROPOSALS
     : PROPOSALS.filter(p => p.category === selectedCategory);
@@ -64,8 +62,7 @@ export default function Agenda() {
       bill.summary.toLowerCase().includes(billSearch.toLowerCase());
     
     if (billFilterCategory === 'Todos') return matchesSearch;
-    const relatedProposal = PROPOSALS.find(p => p.id === bill.proposalIdRelated);
-    return matchesSearch && relatedProposal?.category === billFilterCategory;
+    return matchesSearch && billAxisLabel(bill.proposalIdRelated) === billFilterCategory;
   });
 
   const getProposalIcon = (name: string, className: string = "h-5 w-5") => {
@@ -102,27 +99,38 @@ export default function Agenda() {
     return stages.indexOf(status) + 1;
   };
 
-  const handleSignSubmit = (e: React.FormEvent) => {
+  const handleSignSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!signingName.trim() || !signingEmail.trim() || !signingBillId) return;
 
-    setSignedBills(prev => ({
-      ...prev,
-      [signingBillId]: {
-        signed: true,
-        name: signingName,
-        count: prev[signingBillId].count + 1
+    setSignSubmitting(true);
+    setSignError('');
+    try {
+      const res = await fetch(`/api/bills/${signingBillId}/support`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: signingName, email: signingEmail }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSignError(data?.error || 'No se pudo registrar tu respaldo. Intenta de nuevo.');
+        return;
       }
-    }));
-    setSignSuccess(true);
-    setSigningName('');
-    setSigningEmail('');
-    
-    // Auto clear success indicator
-    setTimeout(() => {
-      setSignSuccess(false);
-      setSigningBillId(null);
-    }, 4000);
+      // Actualiza localmente el conteo real y marca el proyecto como respaldado
+      setSignedBills(prev => ({ ...prev, [signingBillId]: { name: signingName } }));
+      setBills(prev => prev.map(b => (String(b.id) === String(signingBillId) ? { ...b, supportCount: data.supportCount } : b)));
+      setSignSuccess(true);
+      setSigningName('');
+      setSigningEmail('');
+      setTimeout(() => {
+        setSignSuccess(false);
+        setSigningBillId(null);
+      }, 4000);
+    } catch {
+      setSignError('Error de conexión. Verifica tu red e intenta de nuevo.');
+    } finally {
+      setSignSubmitting(false);
+    }
   };
 
   return (
@@ -260,8 +268,8 @@ export default function Agenda() {
                 onChange={(e) => setBillFilterCategory(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-ant-blue focus:bg-white rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none transition-all appearance-none cursor-pointer"
               >
-                <option value="Todos">Filtro por Categoría: Todos</option>
-                {categories.filter(c => c !== 'Todos').map((cat) => (
+                <option value="Todos">Filtro por Tema: Todos</option>
+                {billCategories.filter(c => c !== 'Todos').map((cat) => (
                   <option key={cat} value={cat}>
                     {cat}
                   </option>
@@ -305,9 +313,8 @@ export default function Agenda() {
           ) : (
             <div className="grid gap-6 md:grid-cols-2">
               {filteredBills.map((bill) => {
-                const relatedProposal = PROPOSALS.find(p => p.id === bill.proposalIdRelated);
-                const isSigned = signedBills[bill.id]?.signed;
-                const signCount = signedBills[bill.id]?.count ?? 0;
+                const isSigned = Boolean(signedBills[bill.id]);
+                const signCount = bill.supportCount ?? 0;
 
                 return (
                   <div
@@ -328,7 +335,7 @@ export default function Agenda() {
 
                       <div className="space-y-1.5 text-left">
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
-                          Eje Relacionado: {relatedProposal?.title || 'General'}
+                          Tema: {billAxisLabel(bill.proposalIdRelated)}
                         </span>
                         <h4 className="text-lg font-bold text-slate-900 hover:text-ant-blue-dark transition-colors cursor-pointer" onClick={() => setSelectedBill(bill)}>
                           {bill.title}
@@ -457,16 +464,16 @@ export default function Agenda() {
 
                 <div className="relative">
                   {/* Background Track Line */}
-                  <div className="absolute top-4 left-4 right-4 h-1 bg-slate-200 -translate-y-1/2 z-0 hidden md:block" />
+                  <div className="absolute top-4 left-4 right-4 h-1 bg-slate-200 -translate-y-1/2 z-0 hidden lg:block" />
                   
                   {/* Progress Line representation */}
                   <div 
-                    className="absolute top-4 left-4 h-1 bg-ant-blue -translate-y-1/2 z-0 hidden md:block transition-all duration-500" 
+                    className="absolute top-4 left-4 h-1 bg-ant-blue -translate-y-1/2 z-0 hidden lg:block transition-all duration-500" 
                     style={{ width: `${((getStageStep(selectedBill.status) - 1) / 6) * 100}%` }}
                   />
 
                   {/* Steps list */}
-                  <div className="grid gap-6 md:grid-cols-7 relative z-10">
+                  <div className="grid gap-x-2 gap-y-6 grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 relative z-10">
                     {[
                       { name: 'Radicado', label: 'Radicado del Texto' },
                       { name: 'Primer Debate', label: 'Comisión Quinta' },
@@ -482,7 +489,7 @@ export default function Agenda() {
                       const isActive = currentStep === billStep;
 
                       return (
-                        <div key={step.name} className="flex md:flex-col items-center gap-3 md:gap-0 text-center">
+                        <div key={step.name} className="flex md:flex-col items-center gap-2 md:gap-0 text-center min-w-0">
                           <div 
                             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-extrabold border transition-all ${
                               isCompleted 
@@ -494,11 +501,11 @@ export default function Agenda() {
                           >
                             {isCompleted ? <Check className="h-4 w-4" /> : currentStep}
                           </div>
-                          <div className="text-left md:text-center md:mt-3">
-                            <span className={`block text-xs font-bold leading-tight ${isActive ? 'text-slate-900 font-extrabold' : isCompleted ? 'text-ant-blue-dark' : 'text-slate-400'}`}>
+                          <div className="text-left md:text-center md:mt-3 min-w-0 break-words">
+                            <span className={`block text-[10px] md:text-xs font-bold leading-tight ${isActive ? 'text-slate-900 font-extrabold' : isCompleted ? 'text-ant-blue-dark' : 'text-slate-400'}`}>
                               {step.name}
                             </span>
-                            <span className="block text-[9px] text-slate-400 mt-0.5 leading-none md:hidden lg:block">
+                            <span className="hidden lg:block text-[9px] text-slate-400 mt-0.5 leading-none">
                               {step.label}
                             </span>
                           </div>
@@ -573,7 +580,7 @@ export default function Agenda() {
                   <div className="bg-ant-blue text-white rounded-2xl p-5 space-y-3 text-center relative overflow-hidden">
                     <Heart className="h-12 w-12 text-white/15 absolute right-0 bottom-0 translate-x-2 translate-y-2 transform" />
                     <h6 className="text-xs font-bold uppercase tracking-wider">Apoyo Ciudadano Recibido</h6>
-                    <span className="block text-3xl font-black">{signedBills[selectedBill.id]?.count ?? 0} firmas</span>
+                    <span className="block text-3xl font-black">{selectedBill.supportCount ?? 0} firmas</span>
                     <p className="text-[10px] text-ant-blue-light leading-relaxed">
                       Este proyecto tiene un gran interés social en Antioquia. Apóyalo para visibilizar el clamor regional.
                     </p>
@@ -626,7 +633,7 @@ export default function Agenda() {
                   </div>
                   <h5 className="text-lg font-black text-slate-900">¡Respaldo Registrado!</h5>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    Has sumado tu firma de apoyo al proyecto de ley. Tu voz ayuda a que el Congreso conozca la importancia territorial de esta reglamentación.
+                    Has sumado tu firma de apoyo al proyecto de ley. Te enviamos una confirmación a tu correo. Tu voz ayuda a que el Congreso conozca la importancia territorial de esta reglamentación.
                   </p>
                 </div>
               ) : (
@@ -634,6 +641,13 @@ export default function Agenda() {
                   <p className="text-xs text-slate-500 leading-relaxed">
                     Registra tu apoyo cívico para esta iniciativa legislativa liderada por el equipo Enamorados de Antioquia de Ana Ligia Mora.
                   </p>
+
+                  {signError && (
+                    <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-left">
+                      <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                      <p className="text-xs text-red-700 font-semibold">{signError}</p>
+                    </div>
+                  )}
 
                   <div className="space-y-1.5 text-left">
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Nombre Completo</label>
@@ -661,9 +675,17 @@ export default function Agenda() {
 
                   <button
                     type="submit"
-                    className="w-full rounded-xl bg-ant-blue text-white font-bold text-xs py-3.5 hover:bg-ant-blue hover:scale-[1.01] transition-all shadow hover:shadow-ant-blue-dark/15"
+                    disabled={signSubmitting}
+                    className="w-full rounded-xl bg-ant-blue text-white font-bold text-xs py-3.5 hover:bg-ant-blue hover:scale-[1.01] transition-all shadow hover:shadow-ant-blue-dark/15 disabled:opacity-60 disabled:hover:scale-100"
                   >
-                    Confirmar Firma de Respaldo
+                    {signSubmitting ? (
+                      <span className="flex items-center justify-center space-x-2">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>Registrando tu respaldo…</span>
+                      </span>
+                    ) : (
+                      'Confirmar Firma de Respaldo'
+                    )}
                   </button>
                 </form>
               )}

@@ -8,8 +8,38 @@ import PQRSDForm from './components/PQRSDForm';
 import AdminPanel from './components/AdminPanel';
 import Footer from './components/Footer';
 
+const VALID_TABS = ['inicio', 'agenda', 'simulador', 'galeria', 'pqrsd', 'admin'];
+
+function getTabFromHash(): string {
+  if (typeof window === 'undefined') return 'inicio';
+  const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase();
+  if (hash === 'despacho') return 'admin';
+  if (VALID_TABS.includes(hash)) return hash;
+  return 'inicio';
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = React.useState<string>('inicio');
+  const [activeTab, setActiveTab] = React.useState<string>(getTabFromHash);
+
+  React.useEffect(() => {
+    const onHashChange = () => {
+      setActiveTab(getTabFromHash());
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    const targetHash = tab === 'inicio' ? '' : `#${tab}`;
+    if (window.location.hash !== targetHash) {
+      if (tab === 'inicio') {
+        window.history.pushState(null, '', window.location.pathname + window.location.search);
+      } else {
+        window.location.hash = targetHash;
+      }
+    }
+  };
 
   React.useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -19,15 +49,15 @@ export default function App() {
     <div className="min-h-screen bg-ant-white flex flex-col text-gray-800 font-sans selection:bg-ant-blue/10 selection:text-ant-blue-dark">
 
       {/* Universal Header */}
-      <Header activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Header activeTab={activeTab} setActiveTab={handleTabChange} />
 
       {/* Main Content */}
       <main className="flex-1">
         {activeTab === 'inicio' && (
           <div className="space-y-16">
             <Hero
-              onExplorePropuestas={() => setActiveTab('agenda')}
-              onContactForm={() => setActiveTab('pqrsd')}
+              onExplorePropuestas={() => handleTabChange('agenda')}
+              onContactForm={() => handleTabChange('pqrsd')}
             />
 
             {/* Philosophy section */}

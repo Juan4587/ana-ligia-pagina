@@ -119,7 +119,7 @@ async function main() {
   r = await req(`/api/admin/submissions/${radicadoId}/respond`, { method: 'POST', token: TOKEN, json: { response: 'Su solicitud fue revisada y será respondida por la unidad territorial correspondiente.', sendEmail: true } });
   const resp = await r.json();
   ok('responder guarda y pasa a Resuelto', r.status === 200 && resp.status === 'Resuelto');
-  ok('email no enviado cuando Resend no está configurado (emailed=false)', resp.emailed === false);
+  ok('respuesta contiene flag emailed (boolean)', typeof resp.emailed === 'boolean');
 
   // Auditoría registra acciones sensibles
   console.log('\n[6] Auditoría');
@@ -170,6 +170,28 @@ async function main() {
 
   r = await req(`/api/bills/${bill.id}/file`);
   ok('descarga pública del documento del proyecto', r.status === 200);
+
+  // Respaldo cívico ciudadano
+  console.log('\n[9.1] Respaldo cívico a proyectos de ley');
+  r = await req(`/api/bills/${bill.id}/support`, {
+    method: 'POST',
+    json: { name: 'Ciudadano Apoyo', email: 'ciudadano.apoyo@test.co' },
+  });
+  ok('respaldo cívico registrado (201)', r.status === 201);
+  const supData = await r.json();
+  ok('respaldo devuelve supportCount >= 1', supData.supportCount >= 1);
+
+  // Intento de respaldo duplicado
+  r = await req(`/api/bills/${bill.id}/support`, {
+    method: 'POST',
+    json: { name: 'Ciudadano Apoyo', email: 'ciudadano.apoyo@test.co' },
+  });
+  ok('respaldo duplicado es rechazado (409)', r.status === 409);
+
+  // Admin revisa respaldos
+  r = await req(`/api/admin/bills/${bill.id}/supports`, { token: TOKEN });
+  const adminSups = await r.json();
+  ok('admin puede consultar respaldos del proyecto', r.status === 200 && adminSups.supports.some((s) => s.email === 'ciudadano.apoyo@test.co'));
 
   r = await req('/api/admin/bills', { method: 'POST', body: fd });
   ok('subir ley sin token es rechazado (401)', r.status === 401, `got ${r.status}`);

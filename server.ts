@@ -14,6 +14,7 @@ import { PROPOSALS } from './src/data.js';
 import * as db from './src/server/db.js';
 import { decrypt } from './src/server/crypto.js';
 import * as mail from './src/server/email.js';
+import * as ai from './src/server/ai.js';
 
 const APP_URL = process.env.APP_URL || '';
 
@@ -74,6 +75,7 @@ function serializeBill(row: db.BillRow) {
     hasFile: Boolean(row.stored_name),
     filename: row.filename,
     size: row.size,
+    supportCount: db.countBillSupports(row.id),
     createdAt: row.created_at,
   };
 }
@@ -124,6 +126,13 @@ const rateBuckets = new Map<string, number[]>();
 function rateLimitIp(ip: string): boolean {
   const now = Date.now();
   const windowMs = 60 * 60 * 1000;
+  if (rateBuckets.size > 1000) {
+    for (const [key, timestamps] of rateBuckets.entries()) {
+      const active = timestamps.filter((t) => now - t < windowMs);
+      if (active.length === 0) rateBuckets.delete(key);
+      else rateBuckets.set(key, active);
+    }
+  }
   const hits = (rateBuckets.get(ip) || []).filter((t) => now - t < windowMs);
   if (hits.length >= 8) {
     rateBuckets.set(ip, hits);
@@ -194,6 +203,7 @@ function multerErrorWrapper(fn: express.RequestHandler): express.RequestHandler 
 async function startServer() {
   const app = express();
 
+  app.set('trust proxy', 1);
   app.use(express.json({ limit: '1mb' }));
 
   // Política de retención: anonimiza automáticamente radicados inactivos,
@@ -224,9 +234,9 @@ async function startServer() {
   });
 
   // Radicar un requerimiento ciudadano (multipart: campos + adjuntos opcionales)
-  app.post('/api/pqrsd/submit', multerErrorWrapper(uploadPqrs.array('files', 4)), (req, res) => {
+  app.post('/api/pqrsd/submit', multerErrorWrapper(uploadPqrs.array('files', 4)), async (req, res) => {
     try {
-      const ip = req.socket.remoteAddress || 'unknown';
+      const ip = req.ip || req.socket.remoteAddress || 'unknown';
       if (!rateLimitIp(ip)) {
         res.status(429).json({ error: 'Demasiados radicados desde esta conexión. Intente más tarde.' });
         return;
@@ -249,11 +259,18 @@ async function startServer() {
       const id = makeRadicadoId();
       const matchedProposal = PROPOSALS.find((p) => p.id === proposalId);
       const categoryName = matchedProposal ? matchedProposal.title : 'Consulta Ciudadana General';
-      const aiResponse =
-        `Estimado(a) ${firstName} ${lastName}, su radicado número ${id} ha sido registrado exitosamente en nuestro sistema ` +
-        `bajo la categoría "${categoryName}". Nuestro equipo legislativo revisará los detalles del asunto descrito en un lapso ` +
-        `no mayor a 10 días hábiles. Nos comunicaremos con usted al correo ${email} o al teléfono ${phone}. ` +
-        `Atentamente, Despacho de la Congresista Ana Ligia Mora Martínez.`;
+
+      const triage = await ai.generateTriageAndResponse({
+        id,
+        firstName,
+        lastName,
+        email,
+        phone,
+        type,
+        categoryName,
+        description,
+      });
+      const aiResponse = triage.aiResponse;
 
       const row = db.insertSubmission({
         id,
@@ -339,6 +356,43 @@ async function startServer() {
     }
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(bill.filename || 'documento.pdf')}"`);
     res.sendFile(filePath);
+  });
+
+  // Respaldo cívico ciudadano a un proyecto de ley (sin token: lo firma el ciudadano)
+  app.post('/api/bills/:id/support', async (req, res) => {
+    const bill = db.getBillById(Number(req.params.id));
+    if (!bill) {
+      res.status(404).json({ error: 'El proyecto de ley no existe.' });
+      return;
+    }
+    const { name, email } = (req.body || {}) as { name?: string; email?: string };
+    const cleanName = (name || '').trim();
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanName || !cleanEmail) {
+      res.status(400).json({ error: 'Ingrese su nombre y su correo electrónico.' });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      res.status(400).json({ error: 'El correo electrónico no es válido.' });
+      return;
+    }
+    const created = db.insertBillSupport({ billId: bill.id, name: cleanName, email: cleanEmail });
+    if (!created) {
+      res.status(409).json({ error: 'Ya registraste tu respaldo a este proyecto de ley.', supportCount: db.countBillSupports(bill.id) });
+      return;
+    }
+    const emailed = await mail.sendBillSupportReceipt({
+      name: created.name,
+      email: created.email,
+      billNumber: bill.number,
+      billTitle: bill.title,
+    });
+    res.status(201).json({
+      ok: true,
+      emailed,
+      supportCount: db.countBillSupports(bill.id),
+      bill: { id: bill.id, number: bill.number, title: bill.title },
+    });
   });
 
   /* ---------- API del Despacho (admin) ---------- */
@@ -605,6 +659,38 @@ async function startServer() {
     }
   });
 
+  app.patch('/api/admin/bills/:id', requireAdmin, (req, res) => {
+    const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
+    const bill = db.getBillById(Number(req.params.id));
+    if (!bill) {
+      res.status(404).json({ error: 'Proyecto de ley no encontrado.' });
+      return;
+    }
+    const b = (req.body || {}) as Record<string, string>;
+    const updated = db.updateBill(Number(req.params.id), {
+      status: b.status,
+      stageDescription: b.stageDescription,
+      proposalIdRelated: b.proposalIdRelated,
+      impactScore: b.impactScore,
+      title: b.title,
+      number: b.number,
+      dateFiled: b.dateFiled,
+      summary: b.summary,
+      authors: b.authors !== undefined ? b.authors.split(',').map((x) => x.trim()).filter(Boolean) : undefined,
+      initiatives: b.initiatives !== undefined ? b.initiatives.split(';').map((x) => x.trim()).filter(Boolean) : undefined,
+    });
+    if (b.status && b.status !== bill.status) {
+      db.audit(s.email, 'LEY_ESTADO_ACTUALIZADO', 'bill', String(bill.id), {
+        number: bill.number,
+        desde: bill.status,
+        hacia: b.status,
+      });
+    } else {
+      db.audit(s.email, 'LEY_ACTUALIZADA', 'bill', String(bill.id), { number: bill.number });
+    }
+    res.json(serializeBill(updated!));
+  });
+
   app.delete('/api/admin/bills/:id', requireAdmin, (req, res) => {
     const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
     const bill = db.getBillById(Number(req.params.id));
@@ -615,6 +701,23 @@ async function startServer() {
     db.deleteBill(Number(req.params.id));
     db.audit(s.email, 'LEY_ELIMINADA', 'bill', String(bill.id), { number: bill.number, title: bill.title });
     res.json({ ok: true });
+  });
+
+  app.get('/api/admin/bills/:id/supports', requireAdmin, (req, res) => {
+    const bill = db.getBillById(Number(req.params.id));
+    if (!bill) {
+      res.status(404).json({ error: 'Proyecto de ley no encontrado.' });
+      return;
+    }
+    res.json({
+      bill: { id: bill.id, number: bill.number, title: bill.title },
+      supports: db.listBillSupports(bill.id).map((r) => ({
+        id: r.id,
+        name: r.name,
+        email: r.email,
+        createdAt: r.created_at,
+      })),
+    });
   });
 
   /* ---------- Frontend ---------- */
@@ -645,6 +748,7 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Server] Portal Legislativo Ana Ligia Mora listo en el puerto ${PORT}`);
     console.log(`[Conf] Email ${mail.emailConfigured ? 'configurado (Resend)' : 'NO configurado'}`);
+    console.log(`[Conf] IA Triage ${process.env.GEMINI_API_KEY ? 'configurada (Google Gemini Flash)' : 'modo plantilla institucional'}`);
     if (!mail.emailConfigured) {
       console.log('  ┌──────────────────────────────────────────────────────────────────────┐');
       console.log('  │  ⚠  CORREOS NO CONFIGURADOS                                            │');

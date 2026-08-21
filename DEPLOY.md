@@ -37,6 +37,7 @@ En la pestaña **Variables** de Railway define (nunca en el repositorio):
 | `DATA_DIR` | `/data` | **Importante:** carpetas que no están en un volumen aparecen como `/app/data`; usa un volumen persistente (punto 4). |
 | `ENCRYPTION_KEY` | (generar) | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. No perderla. |
 | `RESEND_API_KEY` | (de resend.com) | Vacía = el portal funciona sin correos (aviso visible al arrancar). |
+| `GEMINI_API_KEY` | (de aistudio.google.com) | Gratuita (1500 req/día). Vacía = usa plantilla institucional estándar. |
 | `EMAIL_FROM` | `Departamento Legislativo <no-reply@tudominio.co>` | Remitente **verificado** en Resend. |
 | `DESPACHO_EMAIL` | `ana.mora@camara.gov.co` | Buzón del despacho. |
 | `ANONYMIZE_AFTER_DAYS` | `1460` | Política de retención (4 años). |
