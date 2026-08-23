@@ -9,6 +9,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
+import { PDFParse } from 'pdf-parse';
 import { createServer as createViteServer } from 'vite';
 import { PROPOSALS } from './src/data.js';
 import * as db from './src/server/db.js';
@@ -621,6 +622,26 @@ async function startServer() {
     }
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.filename)}"`);
     res.sendFile(filePath);
+  });
+
+  // Extraer información de un proyecto de ley desde un PDF (OCR + Gemini)
+  app.post('/api/admin/bills/extract', requireAdmin, multerErrorWrapper(uploadBill.single('file')), async (req, res) => {
+    try {
+      const file = (req as express.Request & { file?: Express.Multer.File }).file;
+      if (!file) {
+        res.status(400).json({ error: 'Adjunte el PDF del proyecto de ley.' });
+        return;
+      }
+      const buffer = fs.readFileSync(file.path);
+      const parser = new PDFParse({ data: new Uint8Array(buffer) });
+      const textResult = await parser.getText();
+      const extracted = await ai.extractBillFields(textResult.text);
+      fs.unlink(file.path, () => {}); // limpiar archivo temporal
+      res.json(extracted);
+    } catch (err: any) {
+      console.error('Error extrayendo datos del PDF:', err);
+      res.status(500).json({ error: err.message || 'Error al procesar el PDF.' });
+    }
   });
 
   // Proyectos de ley: administración

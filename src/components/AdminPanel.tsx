@@ -112,6 +112,7 @@ export default function AdminPanel() {
   const [billFile, setBillFile] = React.useState<File | null>(null);
   const [billsLoading, setBillsLoading] = React.useState(false);
   const [uploadingBill, setUploadingBill] = React.useState(false);
+  const [extracting, setExtracting] = React.useState(false);
 
   // Respaldos ciudadanos por proyecto
   const [supportsFor, setSupportsFor] = React.useState<{
@@ -413,6 +414,38 @@ export default function AdminPanel() {
       setNotice({ type: 'err', text: err.message });
     } finally {
       setSupportsLoading(false);
+    }
+  };
+
+  const extractFromPdf = async (file: File) => {
+    setExtracting(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const token = sessionStorage.getItem(STORAGE_TOKEN) || '';
+      const res = await fetch('/api/admin/bills/extract', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al extraer datos.');
+      setBillForm((prev) => ({
+        ...prev,
+        title: data.title || prev.title,
+        number: data.number || prev.number,
+        dateFiled: data.dateFiled || prev.dateFiled,
+        summary: data.summary || prev.summary,
+        authors: data.authors?.length ? data.authors.join(', ') : prev.authors,
+        initiatives: data.initiatives?.length ? data.initiatives.join('; ') : prev.initiatives,
+        proposalIdRelated: data.proposalIdRelated || prev.proposalIdRelated,
+        stageDescription: data.stageDescription || prev.stageDescription,
+      }));
+      setNotice({ type: 'ok', text: 'Datos extraídos del PDF. Revise y edite antes de guardar.' });
+    } catch (err: any) {
+      setNotice({ type: 'err', text: err.message });
+    } finally {
+      setExtracting(false);
     }
   };
 
@@ -931,13 +964,19 @@ export default function AdminPanel() {
                 <div className="space-y-1.5">
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Documento oficial (PDF/DOC/TXT, máx 20 MB)</label>
                   <label className="flex items-center gap-2 rounded-xl border border-dashed border-slate-300 hover:border-ant-blue bg-slate-50 px-4 py-3 text-sm text-slate-600 cursor-pointer transition-all">
-                    <Upload className="h-4 w-4 text-ant-blue" />
-                    <span className="truncate">{billFile ? billFile.name : 'Seleccionar archivo del proyecto de ley'}</span>
+                    {extracting ? <Loader2 className="h-4 w-4 text-ant-blue animate-spin" /> : <Upload className="h-4 w-4 text-ant-blue" />}
+                    <span className="truncate">{extracting ? 'Extrayendo datos del PDF…' : billFile ? billFile.name : 'Seleccionar archivo del proyecto de ley'}</span>
                   </label>
                   <input
                     type="file"
                     accept=".pdf,.doc,.docx,.txt"
-                    onChange={(e) => setBillFile(e.target.files?.[0] || null)}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setBillFile(file);
+                      if (file && file.type === 'application/pdf') {
+                        extractFromPdf(file);
+                      }
+                    }}
                     className="hidden"
                   />
                 </div>
