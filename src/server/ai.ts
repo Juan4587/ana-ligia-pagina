@@ -130,6 +130,80 @@ export async function extractBillFields(pdfText: string): Promise<BillExtraction
   }
 }
 
+export async function extractBillFieldsFromPdf(pdfBuffer: Buffer): Promise<BillExtractionResult> {
+  const apiKey = process.env.GEMINI_API_KEY || '';
+  const pdfText = pdfBuffer.toString('utf-8');
+
+  const fallback = (): BillExtractionResult => ({
+    title: '',
+    number: '',
+    dateFiled: new Date().toISOString().slice(0, 10),
+    summary: pdfText.slice(0, 500),
+    authors: [],
+    initiatives: [],
+    proposalIdRelated: classifyTopic(pdfText),
+    stageDescription: '',
+  });
+
+  if (!apiKey) return fallback();
+
+  const base64Data = pdfBuffer.toString('base64');
+  const systemInstruction =
+    'Eres un asistente técnico que extrae información estructurada de proyectos de ley colombianos. ' +
+    'Debes devolver ÚNICAMENTE un JSON válido, sin texto adicional, sin markdown, sin ```.';
+  const userPrompt =
+    'Analiza este documento PDF de un proyecto de ley colombiano y extrae la siguiente información.\n' +
+    'Responde con un JSON con esta estructura exacta (sin texto adicional):\n' +
+    '{\n' +
+    '  "title": "título del proyecto o vacío si no se encuentra",\n' +
+    '  "number": "número del proyecto (ej: PL 098/2026) o vacío",\n' +
+    '  "dateFiled": "fecha de radicación en formato YYYY-MM-DD o vacío",\n' +
+    '  "summary": "resumen ejecutivo del proyecto en máximo 2 oraciones",\n' +
+    '  "authors": ["nombre1", "nombre2"],\n' +
+    '  "initiatives": ["iniciativa1", "iniciativa2"],\n' +
+    '  "proposalIdRelated": "uno de: ambiente, mineria, rural, energia, agua, social, control-politico, general",\n' +
+    '  "stageDescription": "etapa actual del trámite legislativo o vacío"\n' +
+    '}';
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: `${systemInstruction}\n\n${userPrompt}` },
+            { inlineData: { mimeType: 'application/pdf', data: base64Data } },
+          ],
+        }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 800 },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) return fallback();
+    const data = (await res.json()) as any;
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!text) return fallback();
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return fallback();
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      title: typeof parsed.title === 'string' ? parsed.title : '',
+      number: typeof parsed.number === 'string' ? parsed.number : '',
+      dateFiled: typeof parsed.dateFiled === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.dateFiled) ? parsed.dateFiled : '',
+      summary: typeof parsed.summary === 'string' ? parsed.summary : '',
+      authors: Array.isArray(parsed.authors) ? parsed.authors.filter((a: any) => typeof a === 'string') : [],
+      initiatives: Array.isArray(parsed.initiatives) ? parsed.initiatives.filter((i: any) => typeof i === 'string') : [],
+      proposalIdRelated: typeof parsed.proposalIdRelated === 'string' ? classifyTopic(parsed.proposalIdRelated) : classifyTopic(pdfText),
+      stageDescription: typeof parsed.stageDescription === 'string' ? parsed.stageDescription : '',
+    };
+  } catch {
+    return fallback();
+  }
+}
+
 export async function generateTriageAndResponse(input: TriageInput): Promise<TriageResult> {
   const apiKey = process.env.GEMINI_API_KEY || '';
 

@@ -623,7 +623,7 @@ async function startServer() {
     res.sendFile(filePath);
   });
 
-  // Extraer información de un proyecto de ley desde un PDF (OCR + Gemini)
+  // Extraer información de un proyecto de ley desde un PDF (Gemini analiza el PDF directamente)
   app.post('/api/admin/bills/extract', requireAdmin, multerErrorWrapper(uploadBill.single('file')), async (req, res) => {
     try {
       const file = (req as express.Request & { file?: Express.Multer.File }).file;
@@ -632,11 +632,8 @@ async function startServer() {
         return;
       }
       const buffer = fs.readFileSync(file.path);
-      const { PDFParse } = await import('pdf-parse');
-      const parser = new PDFParse({ data: new Uint8Array(buffer) });
-      const textResult = await parser.getText();
-      const extracted = await ai.extractBillFields(textResult.text);
-      fs.unlink(file.path, () => {}); // limpiar archivo temporal
+      const extracted = await ai.extractBillFieldsFromPdf(buffer);
+      fs.unlink(file.path, () => {});
       res.json(extracted);
     } catch (err: any) {
       console.error('Error extrayendo datos del PDF:', err);
