@@ -9,7 +9,6 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
-import { PDFParse } from 'pdf-parse';
 import { createServer as createViteServer } from 'vite';
 import { PROPOSALS } from './src/data.js';
 import * as db from './src/server/db.js';
@@ -633,6 +632,7 @@ async function startServer() {
         return;
       }
       const buffer = fs.readFileSync(file.path);
+      const { PDFParse } = await import('pdf-parse');
       const parser = new PDFParse({ data: new Uint8Array(buffer) });
       const textResult = await parser.getText();
       const extracted = await ai.extractBillFields(textResult.text);
