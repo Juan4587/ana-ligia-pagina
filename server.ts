@@ -9,7 +9,6 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
-import { createServer as createViteServer } from 'vite';
 import { PROPOSALS } from './src/data.js';
 import * as db from './src/server/db.js';
 import { decrypt } from './src/server/crypto.js';
@@ -748,18 +747,21 @@ async function startServer() {
   const publicPath = path.join(process.cwd(), 'public');
   app.use(express.static(publicPath));
 
-  if (process.env.NODE_ENV !== 'production') {
+  const distPath = path.join(process.cwd(), 'dist');
+  const hasDist = fs.existsSync(distPath);
+
+  if (hasDist && process.env.NODE_ENV !== 'development') {
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  } else {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
   }
 
   const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
