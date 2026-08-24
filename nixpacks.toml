@@ -5,7 +5,7 @@ nixPkgs = ["nodejs_20", "python3", "gcc", "gnumake"]
 cmds = ["npm ci --include=dev"]
 
 [phases.build]
-cmds = ["npm rebuild better-sqlite3", "npm run build"]
+cmds = ["npm run build"]
 
 [start]
-cmd = "NODE_ENV=production node dist/server.cjs"
+cmd = "npm rebuild better-sqlite3 && NODE_ENV=production node dist/server.cjs"
