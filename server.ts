@@ -801,4 +801,14 @@ async function startServer() {
   });
 }
 
-startServer();
+process.on('unhandledRejection', (err) => {
+  console.error('[FATAL] Unhandled rejection:', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err);
+});
+
+startServer().catch((err) => {
+  console.error('[FATAL] El servidor no pudo iniciar:', err);
+  process.exit(1);
+});
