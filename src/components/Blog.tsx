@@ -170,6 +170,9 @@ export default function Blog() {
                     <img
                       src={featuredPost.image || '/blog-placeholder.jpg'}
                       alt={featuredPost.title}
+                      width={1200}
+                      height={630}
+                      loading="lazy"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
                     <div className="absolute top-4 left-4">
@@ -290,6 +293,9 @@ export default function Blog() {
                     <img
                       src={post.image || '/blog-placeholder.jpg'}
                       alt={post.title}
+                      width={56}
+                      height={56}
+                      loading="lazy"
                       className="w-14 h-14 object-cover rounded-lg flex-shrink-0"
                     />
                     <div className="min-w-0 flex-1">

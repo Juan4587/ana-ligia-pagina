@@ -18,6 +18,9 @@ export default function Footer() {
               <img
                 src="/logo-blanco.png"
                 alt="Ana Ligia Mora Martínez"
+                width={1908}
+                height={593}
+                loading="lazy"
                 className="w-56 md:w-[360px] h-auto"
               />
             </div>

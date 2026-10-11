@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 interface GalleryPhoto {
   src: string;
+  thumb: string;
   caption: string;
   featured?: boolean;
 }
@@ -15,7 +16,8 @@ interface GallerySection {
 }
 
 const recientesPhotos: GalleryPhoto[] = Array.from({ length: 63 }, (_, i) => ({
-  src: `/galeria/recientes/${i + 1}.jpg`,
+  src: `/galeria/recientes/${i + 1}.webp`,
+  thumb: `/galeria/recientes/${i + 1}-thumb.webp`,
   caption: '',
   featured: [1, 5, 10, 20, 35, 50].includes(i + 1),
 }));
@@ -109,7 +111,7 @@ export default function Galeria() {
                   }`}
                 >
                   <img
-                    src={photo.src}
+                    src={photo.thumb}
                     alt={`Foto ${pIdx + 1}`}
                     className="absolute inset-0 w-full h-full object-cover transition duration-300 group-hover:scale-105"
                     loading="lazy"
@@ -168,6 +170,7 @@ export default function Galeria() {
               src={currentPhoto.src}
               alt={`Foto ${lightbox.photoIdx + 1}`}
               className="max-w-full max-h-[75vh] object-contain"
+              loading="eager"
             />
             {currentPhoto.caption && (
               <p className="text-white/80 text-sm mt-4 text-center max-w-lg">

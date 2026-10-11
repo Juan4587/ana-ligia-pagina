@@ -75,6 +75,8 @@ export default function Hero({ onExplorePropuestas, onContactForm }: HeroProps) 
               <img
                 src="/foto_oficial.jpg"
                 alt="Ana Ligia Mora Martínez"
+                width={1200}
+                height={800}
                 className="w-full rounded-2xl border border-neutral-200 shadow-lg shadow-primary/5"
               />
               <div className="mt-4 flex items-center gap-3 text-sm text-neutral-500">
@@ -94,7 +96,7 @@ export default function Hero({ onExplorePropuestas, onContactForm }: HeroProps) 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
             <div className="flex items-center gap-4 p-4 border border-neutral-200 rounded-xl hover:border-primary/30 transition-colors">
               <img
-                src="/logo-cd-new.png"
+                src="/logo-cd-new.webp"
                 alt="Centro Democrático"
                 className="h-10 w-10 object-contain rounded-lg"
               />
@@ -105,7 +107,7 @@ export default function Hero({ onExplorePropuestas, onContactForm }: HeroProps) 
             </div>
             <div className="flex items-center gap-4 p-4 border border-neutral-200 rounded-xl hover:border-primary/30 transition-colors">
               <img
-                src="/enamorados_antioquia.png"
+                src="/enamorados_antioquia.webp"
                 alt="Enamorados de Antioquia"
                 className="h-10 w-10 object-contain rounded-lg"
               />

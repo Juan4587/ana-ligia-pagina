@@ -32,7 +32,7 @@ const navItems = [
         {/* Logo and Brand */}
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('inicio')}>
           <img
-            src="/logo-cd-new.png"
+            src="/logo-cd-new.webp"
             alt="Centro Democrático"
             className="h-9 w-9 object-contain rounded-lg"
           />
