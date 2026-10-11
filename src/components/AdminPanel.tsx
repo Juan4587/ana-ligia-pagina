@@ -11,10 +11,10 @@ import React from 'react';
 import {
   Lock, LogOut, Inbox, FileSpreadsheet, Search, Loader2, Eye, ShieldCheck,
   Trash2, Send, Check, Upload, Download, RefreshCw, Filter, Paperclip,
-  UserPlus, Users, ScrollText, KeyRound, X
+  UserPlus, Users, ScrollText, KeyRound, X, FileText, Pencil, Mail
 } from 'lucide-react';
 import { PROPOSALS, BILL_TOPICS, billAxisLabel } from '../data';
-import { PQRSDSubmission, PQRSDStatus, PQRSDType, FiledBill, BillStatus, AdminUser, AuditEntry } from '../types';
+import { PQRSDSubmission, PQRSDStatus, PQRSDType, FiledBill, BillStatus, BillTipo, GestionStatus, AdminUser, AuditEntry, BlogPost } from '../types';
 
 const STORAGE_TOKEN = 'alm-admin-token';
 const STORAGE_USER = 'alm-admin-user';
@@ -24,6 +24,12 @@ const PQRSD_TYPES: PQRSDType[] = ['Petición', 'Queja', 'Reclamo', 'Sugerencia',
 const BILL_STATUSES: BillStatus[] = [
   'Radicado', 'Primer Debate', 'Segundo Debate', 'Tercer Debate', 'Cuarto Debate', 'Sanción Presidencial', 'Ley de la República',
 ];
+const GESTION_STATUSES: GestionStatus[] = ['Radicado', 'En trámite', 'En análisis', 'Aprobado'];
+const GESTION_TIPOS: BillTipo[] = ['Proyecto de Ley', 'Ponencia', 'Proposición', 'Moción', 'Otro'];
+
+function statusesFor(tipo: BillTipo): string[] {
+  return tipo === 'Proyecto de Ley' ? BILL_STATUSES : GESTION_STATUSES;
+}
 
 async function api(path: string, options: RequestInit = {}) {
   const token = sessionStorage.getItem(STORAGE_TOKEN) || '';
@@ -56,6 +62,9 @@ function statusStyle(status: string) {
 function billStatusStyle(status: string) {
   switch (status) {
     case 'Radicado': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    case 'En trámite': return 'bg-blue-100 text-blue-800 border-blue-200';
+    case 'En análisis': return 'bg-purple-100 text-purple-800 border-purple-200';
+    case 'Aprobado': return 'bg-green-100 text-green-800 border-green-200';
     case 'Primer Debate': return 'bg-blue-100 text-blue-800 border-blue-200';
     case 'Segundo Debate': return 'bg-cyan-100 text-cyan-800 border-cyan-200';
     case 'Tercer Debate': return 'bg-purple-100 text-purple-800 border-purple-200';
@@ -66,11 +75,22 @@ function billStatusStyle(status: string) {
   }
 }
 
+function billTipoStyle(tipo: string) {
+  switch (tipo) {
+    case 'Proyecto de Ley': return 'bg-ant-blue-light text-ant-blue-dark border-ant-blue/20';
+    case 'Ponencia': return 'bg-blue-100 text-blue-800 border-blue-200';
+    case 'Proposición': return 'bg-green-100 text-green-800 border-green-200';
+    case 'Moción': return 'bg-purple-100 text-purple-800 border-purple-200';
+    default: return 'bg-slate-100 text-slate-700 border-slate-200';
+  }
+}
+
 const emptyBillForm = {
   title: '',
   number: '',
   dateFiled: '',
-  status: 'Radicado' as BillStatus,
+  tipo: 'Proyecto de Ley' as BillTipo,
+  status: 'Radicado' as BillStatus | GestionStatus,
   stageDescription: '',
   summary: '',
   proposalIdRelated: 'general',
@@ -78,6 +98,18 @@ const emptyBillForm = {
   authors: '',
   initiatives: '',
 };
+
+const emptyPostForm = {
+  title: '',
+  excerpt: '',
+  content: '',
+  category: 'Legislación',
+  date: '',
+  author: 'Ana Ligia Mora Martínez',
+  tags: '',
+};
+
+const BLOG_CATEGORIES = ['Legislación', 'Medio Ambiente', 'Comunidad', 'Territorio', 'Opinión'];
 
 export default function AdminPanel() {
   const [authed, setAuthed] = React.useState<boolean>(!!sessionStorage.getItem(STORAGE_TOKEN));
@@ -91,7 +123,7 @@ export default function AdminPanel() {
   const [loginError, setLoginError] = React.useState<string | null>(null);
   const [loggingIn, setLoggingIn] = React.useState(false);
 
-  const [tab, setTab] = React.useState<'radicados' | 'leyes' | 'usuarios' | 'auditoria'>('radicados');
+  const [tab, setTab] = React.useState<'radicados' | 'leyes' | 'blog' | 'newsletter' | 'usuarios' | 'auditoria'>('radicados');
 
   // Radicados
   const [filters, setFilters] = React.useState({ status: '', type: '', proposalId: '', q: '' });
@@ -106,13 +138,28 @@ export default function AdminPanel() {
   const [busyAction, setBusyAction] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
-  // Proyectos de ley
+  // Proyectos de ley / gestión legislativa
   const [bills, setBills] = React.useState<FiledBill[]>([]);
   const [billForm, setBillForm] = React.useState(emptyBillForm);
   const [billFile, setBillFile] = React.useState<File | null>(null);
   const [billsLoading, setBillsLoading] = React.useState(false);
   const [uploadingBill, setUploadingBill] = React.useState(false);
-  const [extracting, setExtracting] = React.useState(false);
+  const [tipoFilter, setTipoFilter] = React.useState<string>('');
+
+  // Blog
+  const [posts, setPosts] = React.useState<BlogPost[]>([]);
+  const [postForm, setPostForm] = React.useState(emptyPostForm);
+  const [postFile, setPostFile] = React.useState<File | null>(null);
+  const [postsLoading, setPostsLoading] = React.useState(false);
+  const [savingPost, setSavingPost] = React.useState(false);
+  const [editingPostId, setEditingPostId] = React.useState<string | null>(null);
+
+  // Newsletter
+  const [subscribers, setSubscribers] = React.useState<Array<{
+    id: number; email: string; source: string; active: boolean; createdAt: string;
+  }>>([]);
+  const [subscribersTotal, setSubscribersTotal] = React.useState(0);
+  const [newsletterLoading, setNewsletterLoading] = React.useState(false);
 
   // Respaldos ciudadanos por proyecto
   const [supportsFor, setSupportsFor] = React.useState<{
@@ -174,6 +221,31 @@ export default function AdminPanel() {
     }
   };
 
+  const loadPosts = async () => {
+    setPostsLoading(true);
+    try {
+      const data = await api('/api/admin/posts');
+      setPosts(data);
+    } catch (err: any) {
+      setNotice({ type: 'err', text: err.message });
+    } finally {
+      setPostsLoading(false);
+    }
+  };
+
+  const loadNewsletter = async () => {
+    setNewsletterLoading(true);
+    try {
+      const data = await api('/api/admin/newsletter');
+      setSubscribers(data.items || []);
+      setSubscribersTotal(data.total || 0);
+    } catch (err: any) {
+      setNotice({ type: 'err', text: err.message });
+    } finally {
+      setNewsletterLoading(false);
+    }
+  };
+
   const loadUsers = async () => {
     try {
       const data = await api('/api/admin/users');
@@ -200,7 +272,7 @@ export default function AdminPanel() {
 
   React.useEffect(() => {
     if (authed) {
-      Promise.allSettled([loadSubmissions(), loadBills(), loadUsers(), loadAudit()]);
+      Promise.allSettled([loadSubmissions(), loadBills(), loadPosts(), loadUsers(), loadAudit(), loadNewsletter()]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
@@ -350,7 +422,7 @@ export default function AdminPanel() {
   const handleBillSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!billForm.title.trim() || !billForm.number.trim()) {
-      setNotice({ type: 'err', text: 'Título y número del proyecto son obligatorios.' });
+      setNotice({ type: 'err', text: 'Título y número son obligatorios.' });
       return;
     }
     setUploadingBill(true);
@@ -366,7 +438,7 @@ export default function AdminPanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al registrar.');
-      setNotice({ type: 'ok', text: `Proyecto ${data.number} registrado.` });
+      setNotice({ type: 'ok', text: `${billForm.tipo} ${data.number} registrado.` });
       setBillForm(emptyBillForm);
       setBillFile(null);
       e.currentTarget.reset();
@@ -379,7 +451,7 @@ export default function AdminPanel() {
     }
   };
 
-  const updateBillStatus = async (bill: FiledBill, status: BillStatus) => {
+  const updateBillStatus = async (bill: FiledBill, status: string) => {
     try {
       const updated = await api(`/api/admin/bills/${bill.id}`, {
         method: 'PATCH',
@@ -394,10 +466,10 @@ export default function AdminPanel() {
   };
 
   const removeBill = async (bill: FiledBill) => {
-    if (!confirm(`¿Eliminar el proyecto ${bill.number}?`)) return;
+    if (!confirm(`¿Eliminar ${bill.tipo} ${bill.number}?`)) return;
     try {
       await api(`/api/admin/bills/${bill.id}`, { method: 'DELETE' });
-      setNotice({ type: 'ok', text: 'Proyecto de ley eliminado.' });
+      setNotice({ type: 'ok', text: `${bill.tipo} eliminado.` });
       loadBills();
       loadAudit();
     } catch (err: any) {
@@ -417,35 +489,71 @@ export default function AdminPanel() {
     }
   };
 
-  const extractFromPdf = async (file: File) => {
-    setExtracting(true);
+  const handlePostSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!postForm.title.trim() || !postForm.excerpt.trim() || !postForm.content.trim()) {
+      setNotice({ type: 'err', text: 'Título, extracto y contenido son obligatorios.' });
+      return;
+    }
+    setSavingPost(true);
     try {
       const fd = new FormData();
-      fd.append('file', file);
+      Object.entries(postForm).forEach(([k, v]) => fd.append(k, String(v)));
+      if (postFile) fd.append('image', postFile);
       const token = sessionStorage.getItem(STORAGE_TOKEN) || '';
-      const res = await fetch('/api/admin/bills/extract', {
-        method: 'POST',
+      const isEdit = !!editingPostId;
+      const res = await fetch(isEdit ? `/api/admin/posts/${editingPostId}` : '/api/admin/posts', {
+        method: isEdit ? 'PATCH' : 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al extraer datos.');
-      setBillForm((prev) => ({
-        ...prev,
-        title: data.title || prev.title,
-        number: data.number || prev.number,
-        dateFiled: data.dateFiled || prev.dateFiled,
-        summary: data.summary || prev.summary,
-        authors: data.authors?.length ? data.authors.join(', ') : prev.authors,
-        initiatives: data.initiatives?.length ? data.initiatives.join('; ') : prev.initiatives,
-        proposalIdRelated: data.proposalIdRelated || prev.proposalIdRelated,
-        stageDescription: data.stageDescription || prev.stageDescription,
-      }));
-      setNotice({ type: 'ok', text: 'Datos extraídos del PDF. Revise y edite antes de guardar.' });
+      if (!res.ok) throw new Error(data.error || 'Error al guardar.');
+      setNotice({ type: 'ok', text: isEdit ? 'Publicación actualizada.' : 'Publicación creada.' });
+      setPostForm(emptyPostForm);
+      setPostFile(null);
+      setEditingPostId(null);
+      loadPosts();
+      loadAudit();
     } catch (err: any) {
       setNotice({ type: 'err', text: err.message });
     } finally {
-      setExtracting(false);
+      setSavingPost(false);
+    }
+  };
+
+  const editPost = (post: BlogPost) => {
+    setEditingPostId(post.id);
+    setPostForm({
+      title: post.title,
+      excerpt: post.excerpt,
+      content: post.content,
+      category: post.category,
+      date: post.date,
+      author: post.author,
+      tags: (post.tags || []).join(', '),
+    });
+    setPostFile(null);
+    setNotice(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEditPost = () => {
+    setEditingPostId(null);
+    setPostForm(emptyPostForm);
+    setPostFile(null);
+  };
+
+  const removePost = async (post: BlogPost) => {
+    if (!confirm(`¿Eliminar la publicación "${post.title}"?`)) return;
+    try {
+      await api(`/api/admin/posts/${post.id}`, { method: 'DELETE' });
+      setNotice({ type: 'ok', text: 'Publicación eliminada.' });
+      if (editingPostId === post.id) cancelEditPost();
+      loadPosts();
+      loadAudit();
+    } catch (err: any) {
+      setNotice({ type: 'err', text: err.message });
     }
   };
 
@@ -472,7 +580,7 @@ export default function AdminPanel() {
     try {
       await api(`/api/admin/users/${user.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ isActive: user.is_active !== 1 }),
+        body: JSON.stringify({ isActive: !user.is_active }),
       });
       loadUsers();
       loadAudit();
@@ -604,8 +712,24 @@ export default function AdminPanel() {
             className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${tab === 'leyes' ? 'bg-ant-blue text-white shadow' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
           >
             <FileSpreadsheet className="h-4 w-4" />
-            <span>Proyectos de Ley</span>
+            <span>Gestión Legislativa</span>
             <span className="text-[10px] text-slate-400">{bills.length}</span>
+          </button>
+          <button
+            onClick={() => setTab('blog')}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${tab === 'blog' ? 'bg-ant-blue text-white shadow' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+          >
+            <FileText className="h-4 w-4" />
+            <span>Blog Informativo</span>
+            <span className="text-[10px] text-slate-400">{posts.length}</span>
+          </button>
+          <button
+            onClick={() => setTab('newsletter')}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${tab === 'newsletter' ? 'bg-ant-blue text-white shadow' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+          >
+            <Mail className="h-4 w-4" />
+            <span>Newsletter</span>
+            <span className="text-[10px] text-slate-400">{subscribersTotal}</span>
           </button>
           <button
             onClick={() => setTab('usuarios')}
@@ -857,11 +981,29 @@ export default function AdminPanel() {
             {/* Form */}
             <div className="lg:col-span-5 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
               <h3 className="text-sm font-extrabold uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
-                <Upload className="h-4 w-4 text-ant-blue" /> Registrar Proyecto de Ley
+                <Upload className="h-4 w-4 text-ant-blue" /> Registrar Gestión Legislativa
               </h3>
               <form onSubmit={handleBillSubmit} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Título del Proyecto *</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Tipo de gestión *</label>
+                  <select
+                    value={billForm.tipo}
+                    onChange={(e) => {
+                      const tipo = e.target.value as BillTipo;
+                      const allowed = statusesFor(tipo);
+                      setBillForm((prev) => ({
+                        ...prev,
+                        tipo,
+                        status: allowed.includes(prev.status) ? prev.status : 'Radicado',
+                      }));
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-ant-blue focus:bg-white"
+                  >
+                    {GESTION_TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Título *</label>
                   <input
                     value={billForm.title}
                     onChange={(e) => setBillForm({ ...billForm, title: e.target.value })}
@@ -870,14 +1012,14 @@ export default function AdminPanel() {
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Número *</label>
-                    <input
-                      value={billForm.number}
-                      onChange={(e) => setBillForm({ ...billForm, number: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-ant-blue focus:bg-white"
-                      placeholder="Ej. PL 098/2026"
-                    />
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Número *</label>
+                  <input
+                    value={billForm.number}
+                    onChange={(e) => setBillForm({ ...billForm, number: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-ant-blue focus:bg-white"
+                    placeholder={billForm.tipo === 'Proyecto de Ley' ? 'Ej. PL 098/2026' : billForm.tipo === 'Ponencia' ? 'Ej. PN 001/2026' : 'Ej. PP 001/2026'}
+                  />
                   </div>
                   <div className="space-y-1.5">
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Fecha de Radicación</label>
@@ -894,10 +1036,10 @@ export default function AdminPanel() {
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Estado del Trámite</label>
                     <select
                       value={billForm.status}
-                      onChange={(e) => setBillForm({ ...billForm, status: e.target.value as BillStatus })}
+                      onChange={(e) => setBillForm({ ...billForm, status: e.target.value as BillStatus | GestionStatus })}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-ant-blue focus:bg-white"
                     >
-                      {BILL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      {statusesFor(billForm.tipo).map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1.5">
@@ -964,18 +1106,14 @@ export default function AdminPanel() {
                 <div className="space-y-1.5">
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Documento oficial (PDF/DOC/TXT, máx 20 MB)</label>
                   <label className="flex items-center gap-2 rounded-xl border border-dashed border-slate-300 hover:border-ant-blue bg-slate-50 px-4 py-3 text-sm text-slate-600 cursor-pointer transition-all">
-                    {extracting ? <Loader2 className="h-4 w-4 text-ant-blue animate-spin" /> : <Upload className="h-4 w-4 text-ant-blue" />}
-                    <span className="truncate">{extracting ? 'Extrayendo datos del PDF…' : billFile ? billFile.name : 'Seleccionar archivo del proyecto de ley'}</span>
+                    {billFile ? <FileText className="h-4 w-4 text-ant-blue" /> : <Upload className="h-4 w-4 text-ant-blue" />}
+                    <span className="truncate">{billFile ? billFile.name : 'Seleccionar archivo del proyecto de ley'}</span>
                   </label>
                   <input
                     type="file"
                     accept=".pdf,.doc,.docx,.txt"
                     onChange={(e) => {
-                      const file = e.target.files?.[0] || null;
-                      setBillFile(file);
-                      if (file && file.type === 'application/pdf') {
-                        extractFromPdf(file);
-                      }
+                      setBillFile(e.target.files?.[0] || null);
                     }}
                     className="hidden"
                   />
@@ -986,36 +1124,51 @@ export default function AdminPanel() {
                   className="w-full flex justify-center items-center gap-2 rounded-xl bg-slate-900 text-white py-3.5 font-bold text-sm hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 transition-all"
                 >
                   {uploadingBill ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                  Registrar proyecto de ley
+                  Registrar gestión
                 </button>
               </form>
             </div>
 
             {/* List */}
             <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-              <h3 className="text-sm font-extrabold uppercase tracking-widest text-slate-400 mb-4">Proyectos registrados ({bills.length})</h3>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h3 className="text-sm font-extrabold uppercase tracking-widest text-slate-400">Registrados ({bills.length})</h3>
+                <select
+                  value={tipoFilter}
+                  onChange={(e) => setTipoFilter(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-xs text-slate-700 focus:outline-none focus:border-ant-blue"
+                >
+                  <option value="">Tipo: Todos</option>
+                  {GESTION_TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
               {billsLoading ? (
                 <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-ant-blue" /></div>
               ) : bills.length === 0 ? (
                 <div className="text-center py-16 text-slate-400">
                   <FileSpreadsheet className="h-10 w-10 mx-auto text-slate-300 mb-2" />
-                  <p className="text-sm font-semibold text-slate-500">Aún no hay proyectos registrados.</p>
-                  <p className="text-xs mt-1">Use el formulario para subir los proyectos que radique o apoye la unidad legislativa.</p>
+                  <p className="text-sm font-semibold text-slate-500">Aún no hay gestiones registradas.</p>
+                  <p className="text-xs mt-1">Use el formulario para registrar proyectos de ley, ponencias, proposiciones u otros trámites.</p>
                 </div>
               ) : (
                 <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
-                  {bills.map((bill) => (
+                  {bills
+                    .filter((bill) => !tipoFilter || (bill.tipo || 'Proyecto de Ley') === tipoFilter)
+                    .map((bill) => (
                     <div key={bill.id} className="flex items-center justify-between gap-4 bg-slate-50 border border-slate-100 rounded-xl p-4">
                       <div className="min-w-0 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-[10px] font-mono font-black bg-slate-200 text-slate-700 px-2 py-0.5 rounded">{bill.number}</span>
+                          <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${billTipoStyle(bill.tipo || 'Proyecto de Ley')}`}>
+                            {bill.tipo || 'Proyecto de Ley'}
+                          </span>
                           <select
                             value={bill.status}
-                            onChange={(e) => updateBillStatus(bill, e.target.value as BillStatus)}
+                            onChange={(e) => updateBillStatus(bill, e.target.value)}
                             title="Actualizar estado del trámite"
                             className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none focus:ring-1 focus:ring-ant-blue ${billStatusStyle(bill.status)}`}
                           >
-                            {BILL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                            {statusesFor(bill.tipo || 'Proyecto de Ley').map((s) => <option key={s} value={s}>{s}</option>)}
                           </select>
                           <span className="text-[9px] font-bold text-slate-400">{billAxisLabel(bill.proposalIdRelated)}</span>
                         </div>
@@ -1027,13 +1180,15 @@ export default function AdminPanel() {
                               <Paperclip className="h-3 w-3" /> Ver documento
                             </a>
                           )}
-                          <button
-                            onClick={() => openSupports(bill)}
-                            title="Ver respaldos ciudadanos"
-                            className="flex items-center gap-1 text-ant-blue-dark bg-ant-blue-light/60 hover:bg-ant-blue-light border border-ant-blue-light px-2 py-0.5 rounded-full font-bold transition-colors"
-                          >
-                            <Users className="h-3 w-3" /> {bill.supportCount ?? 0} respaldos
-                          </button>
+                          {(bill.tipo || 'Proyecto de Ley') === 'Proyecto de Ley' && (
+                            <button
+                              onClick={() => openSupports(bill)}
+                              title="Ver respaldos ciudadanos"
+                              className="flex items-center gap-1 text-ant-blue-dark bg-ant-blue-light/60 hover:bg-ant-blue-light border border-ant-blue-light px-2 py-0.5 rounded-full font-bold transition-colors"
+                            >
+                              <Users className="h-3 w-3" /> {bill.supportCount ?? 0} respaldos
+                            </button>
+                          )}
                         </div>
                       </div>
                       <button
@@ -1048,6 +1203,232 @@ export default function AdminPanel() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {tab === 'blog' && (
+          <div className="grid gap-6 lg:grid-cols-12 items-start">
+            {/* Form */}
+            <div className="lg:col-span-5 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-extrabold uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-ant-blue" />
+                  {editingPostId ? 'Editar publicación' : 'Nueva publicación'}
+                </h3>
+                {editingPostId && (
+                  <button
+                    type="button"
+                    onClick={cancelEditPost}
+                    className="text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-ant-blue"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
+              <form onSubmit={handlePostSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Título *</label>
+                  <input
+                    value={postForm.title}
+                    onChange={(e) => setPostForm({ ...postForm, title: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-ant-blue focus:bg-white"
+                    placeholder="Título del artículo"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Extracto *</label>
+                  <textarea
+                    value={postForm.excerpt}
+                    onChange={(e) => setPostForm({ ...postForm, excerpt: e.target.value })}
+                    rows={2}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-ant-blue focus:bg-white"
+                    placeholder="Resumen breve que aparece en el listado"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Contenido *</label>
+                  <textarea
+                    value={postForm.content}
+                    onChange={(e) => setPostForm({ ...postForm, content: e.target.value })}
+                    rows={6}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-ant-blue focus:bg-white"
+                    placeholder="Cuerpo completo del artículo"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Categoría *</label>
+                    <input
+                      list="blog-categories"
+                      value={postForm.category}
+                      onChange={(e) => setPostForm({ ...postForm, category: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-ant-blue focus:bg-white"
+                      placeholder="Legislación"
+                    />
+                    <datalist id="blog-categories">
+                      {BLOG_CATEGORIES.map((c) => <option key={c} value={c} />)}
+                    </datalist>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Fecha</label>
+                    <input
+                      type="date"
+                      value={postForm.date}
+                      onChange={(e) => setPostForm({ ...postForm, date: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-ant-blue focus:bg-white"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Autor</label>
+                  <input
+                    value={postForm.author}
+                    onChange={(e) => setPostForm({ ...postForm, author: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-ant-blue focus:bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Etiquetas (separadas por coma)</label>
+                  <input
+                    value={postForm.tags}
+                    onChange={(e) => setPostForm({ ...postForm, tags: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-ant-blue focus:bg-white"
+                    placeholder="Legislación, Medio Ambiente, Comisión Quinta"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Portada (JPG/PNG/WEBP/GIF, máx 5 MB)</label>
+                  <label className="flex items-center gap-2 rounded-xl border border-dashed border-slate-300 hover:border-ant-blue bg-slate-50 px-4 py-3 text-sm text-slate-600 cursor-pointer transition-all">
+                    <Upload className="h-4 w-4 text-ant-blue" />
+                    <span className="truncate">{postFile ? postFile.name : editingPostId ? 'Reemplazar portada (opcional)' : 'Seleccionar portada (opcional)'}</span>
+                  </label>
+                  <input
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.webp,.gif"
+                    onChange={(e) => setPostFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={savingPost}
+                  className="w-full flex justify-center items-center gap-2 rounded-xl bg-slate-900 text-white py-3.5 font-bold text-sm hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 transition-all"
+                >
+                  {savingPost ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {editingPostId ? 'Guardar cambios' : 'Publicar'}
+                </button>
+              </form>
+            </div>
+
+            {/* List */}
+            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-extrabold uppercase tracking-widest text-slate-400">Publicaciones ({posts.length})</h3>
+                <button
+                  onClick={loadPosts}
+                  className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+                  title="Actualizar lista"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </button>
+              </div>
+              {postsLoading ? (
+                <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-ant-blue" /></div>
+              ) : posts.length === 0 ? (
+                <div className="text-center py-16 text-slate-400">
+                  <FileText className="h-10 w-10 mx-auto text-slate-300 mb-2" />
+                  <p className="text-sm font-semibold text-slate-500">Aún no hay publicaciones.</p>
+                  <p className="text-xs mt-1">Use el formulario para crear artículos del blog.</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+                  {posts.map((post) => (
+                    <div
+                      key={post.id}
+                      className={`flex items-center justify-between gap-4 rounded-xl p-4 border ${editingPostId === post.id ? 'bg-ant-blue-light/40 border-ant-blue/30' : 'bg-slate-50 border-slate-100'}`}
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border bg-ant-blue-light text-ant-blue-dark border-ant-blue/20">
+                            {post.category}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-400">{post.date}</span>
+                        </div>
+                        <h5 className="text-sm font-bold text-slate-900 truncate">{post.title}</h5>
+                        <p className="text-[11px] text-slate-500 line-clamp-2">{post.excerpt}</p>
+                        <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
+                          <span>{post.author}</span>
+                          {(post.tags || []).map((t) => (
+                            <span key={t} className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">{t}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          onClick={() => editPost(post)}
+                          className="p-2 rounded-lg text-ant-blue hover:bg-ant-blue-light transition-colors"
+                          title="Editar publicación"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => removePost(post)}
+                          className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+                          title="Eliminar publicación"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === 'newsletter' && (
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-extrabold uppercase tracking-widest text-slate-400">
+                Suscriptores del boletín ({subscribersTotal})
+              </h3>
+              <button onClick={loadNewsletter} className="text-slate-400 hover:text-ant-blue" title="Actualizar">
+                <RefreshCw className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Suscripciones registradas desde el Blog. El envío masivo del boletín es una fase posterior.
+            </p>
+            {newsletterLoading ? (
+              <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-ant-blue" /></div>
+            ) : subscribers.length === 0 ? (
+              <div className="text-center py-16 text-slate-400">
+                <Mail className="h-10 w-10 mx-auto text-slate-300 mb-2" />
+                <p className="text-sm font-semibold text-slate-500">Aún no hay suscriptores.</p>
+                <p className="text-xs mt-1">Las suscripciones del formulario del Blog aparecerán aquí.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+                {subscribers.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between gap-4 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                    <div className="min-w-0 flex items-center gap-3">
+                      <Mail className={`h-4 w-4 shrink-0 ${s.active ? 'text-ant-blue' : 'text-slate-300'}`} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 truncate">{s.email}</p>
+                        <p className="text-[10px] text-slate-400">{s.source}</p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${s.active ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-500'}`}>
+                        {s.active ? 'Activo' : 'Inactivo'}
+                      </span>
+                      <span className="text-[10px] text-slate-400">{new Date(s.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

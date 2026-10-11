@@ -1,14 +1,17 @@
 import React from 'react';
 import Header from './components/Header';
 import Hero from './components/Hero';
+import Ponencias from './components/Ponencias';
 import Agenda from './components/Agenda';
-import Simulator from './components/Simulator';
 import Galeria from './components/Galeria';
 import PQRSDForm from './components/PQRSDForm';
 import AdminPanel from './components/AdminPanel';
 import Footer from './components/Footer';
+import Blog from './components/Blog';
+import BlogCard from './components/BlogCard';
+import { BlogPost } from './types';
 
-const VALID_TABS = ['inicio', 'agenda', 'simulador', 'galeria', 'pqrsd', 'admin'];
+const VALID_TABS = ['inicio', 'ponencias', 'agenda', 'galeria', 'pqrsd', 'admin', 'blog'];
 
 function getTabFromHash(): string {
   if (typeof window === 'undefined') return 'inicio';
@@ -20,6 +23,21 @@ function getTabFromHash(): string {
 
 export default function App() {
   const [activeTab, setActiveTab] = React.useState<string>(getTabFromHash);
+  const [latestPosts, setLatestPosts] = React.useState<BlogPost[]>([]);
+
+  React.useEffect(() => {
+    fetch('/api/posts')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!Array.isArray(data) || data.length === 0) return;
+        const sorted = [...data]
+          .filter((p): p is BlogPost => p && typeof p.date === 'string')
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          .slice(0, 3);
+        setLatestPosts(sorted);
+      })
+      .catch(() => {});
+  }, []);
 
   React.useEffect(() => {
     const onHashChange = () => {
@@ -46,7 +64,7 @@ export default function App() {
   }, [activeTab]);
 
   return (
-    <div className="min-h-screen bg-ant-white flex flex-col text-gray-800 font-sans selection:bg-ant-blue/10 selection:text-ant-blue-dark">
+      <div className="min-h-screen bg-neutral-50 flex flex-col text-neutral-800 font-sans selection:bg-primary/10 selection:text-primary">
 
       {/* Universal Header */}
       <Header activeTab={activeTab} setActiveTab={handleTabChange} />
@@ -60,11 +78,42 @@ export default function App() {
               onContactForm={() => handleTabChange('pqrsd')}
             />
 
+            {/* Últimas publicaciones */}
+            {latestPosts.length > 0 && (
+              <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <div className="flex items-end justify-between mb-6">
+                  <div>
+                    <span className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">
+                      Blog
+                    </span>
+                    <h2 className="text-2xl font-bold text-neutral-900 font-serif mt-1">
+                      Últimas publicaciones
+                    </h2>
+                  </div>
+                  <a
+                    href="#blog"
+                    className="text-sm font-semibold text-primary hover:text-primary-dark transition-colors"
+                  >
+                    Ver todas las publicaciones →
+                  </a>
+                </div>
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {latestPosts.map((post) => (
+                    <BlogCard
+                      key={post.id}
+                      post={post}
+                      onClick={() => handleTabChange('blog')}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
             {/* Philosophy section */}
             <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pb-16">
               <div className="border border-gray-200 rounded-2xl p-8 md:p-10 grid gap-10 md:grid-cols-12 items-center bg-white">
-                <div className="md:col-span-5 border-l-4 border-ant-blue pl-6 py-2">
-                  <span className="block text-ant-blue text-xs font-semibold tracking-[0.2em] uppercase mb-1">
+                <div className="md:col-span-5 border-l-4 border-primary pl-6 py-2">
+                  <span className="block text-primary text-xs font-semibold tracking-[0.2em] uppercase mb-1">
                     Filosofía legislativa
                   </span>
                   <blockquote className="text-2xl font-bold text-gray-900 leading-tight">
@@ -84,15 +133,16 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'agenda' && <Agenda />}
+        {activeTab === 'ponencias' && <Ponencias />}
 
-        {activeTab === 'simulador' && <Simulator />}
+        {activeTab === 'agenda' && <Agenda />}
 
         {activeTab === 'galeria' && <Galeria />}
 
         {activeTab === 'pqrsd' && <PQRSDForm />}
 
         {activeTab === 'admin' && <AdminPanel />}
+        {activeTab === 'blog' && <Blog />}
       </main>
 
       <Footer />

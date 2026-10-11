@@ -1,6 +1,7 @@
 node_modules/
 build/
 dist/
+server-dist/
 coverage/
 .DS_Store
 *.log
@@ -13,3 +14,7 @@ backups/
 /ana_ligia.jpg
 /logo_cd.jepg
 /CD (1).png
+
+public/_crop_check/
+backups/
+scripts/backup_seed_ponencias.json

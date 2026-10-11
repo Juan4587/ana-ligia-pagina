@@ -11,7 +11,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { insertBill, listBills, uploadsBillsDir } from '../src/server/db.js';
+import { ensureSchema, insertBill, listBills, uploadsBillsDir } from '../src/server/db.js';
 
 const defaultSourceDir = fs.existsSync(path.resolve(process.cwd(), 'Proyectos de ley'))
   ? path.resolve(process.cwd(), 'Proyectos de ley')
@@ -114,41 +114,51 @@ const BILLS = [
   },
 ];
 
-const existing = new Set(listBills().map((b) => b.number));
-let inserted = 0;
+async function main() {
+  await ensureSchema();
+  const bills = await listBills();
+  const existing = new Set(bills.map((b) => b.number));
+  let inserted = 0;
 
-for (const b of BILLS) {
-  if (existing.has(b.number)) {
-    console.log(`skip (ya existe): ${b.number}`);
-    continue;
-  }
-  const src = path.join(SOURCE_DIR, b.file);
-  if (!fs.existsSync(src)) {
-    console.log(`ERROR: no encontrado ${b.file}`);
-    continue;
-  }
-  const ext = path.extname(b.file).toLowerCase();
-  const storedName = `${crypto.randomUUID()}${ext}`;
-  fs.copyFileSync(src, path.join(uploadsBillsDir, storedName));
+  for (const b of BILLS) {
+    if (existing.has(b.number)) {
+      console.log(`skip (ya existe): ${b.number}`);
+      continue;
+    }
+    const src = path.join(SOURCE_DIR, b.file);
+    if (!fs.existsSync(src)) {
+      console.log(`ERROR: no encontrado ${b.file}`);
+      continue;
+    }
+    const ext = path.extname(b.file).toLowerCase();
+    const storedName = `${crypto.randomUUID()}${ext}`;
+    fs.copyFileSync(src, path.join(uploadsBillsDir, storedName));
 
-  insertBill({
-    title: b.title,
-    number: b.number,
-    dateFiled: b.dateFiled,
-    status: b.status,
-    stageDescription: b.stageDescription,
-    summary: b.summary,
-    proposalIdRelated: b.proposalIdRelated,
-    authors,
-    initiatives: b.initiatives,
-    impactScore: b.impactScore,
-    stored_name: storedName,
-    filename: b.file,
-    mime: 'application/pdf',
-    size: fs.statSync(src).size,
-  });
-  inserted++;
-  console.log(`insertado: ${b.number}`);
+    await insertBill({
+      title: b.title,
+      number: b.number,
+      dateFiled: b.dateFiled,
+      status: b.status,
+      stageDescription: b.stageDescription,
+      summary: b.summary,
+      proposalIdRelated: b.proposalIdRelated,
+      authors,
+      initiatives: b.initiatives,
+      impactScore: b.impactScore,
+      stored_name: storedName,
+      filename: b.file,
+      mime: 'application/pdf',
+      size: fs.statSync(src).size,
+    });
+    inserted++;
+    console.log(`insertado: ${b.number}`);
+  }
+
+  const finalBills = await listBills();
+  console.log(`\nTotal insertados: ${inserted}. En base de datos ahora: ${finalBills.length}`);
 }
 
-console.log(`\nTotal insertados: ${inserted}. En base de datos ahora: ${listBills().length}`);
+main().catch((err) => {
+  console.error('Error:', err);
+  process.exit(1);
+});

@@ -14,38 +14,14 @@ interface GallerySection {
   photos: GalleryPhoto[];
 }
 
-const loosePhotos: GalleryPhoto[] = Array.from({ length: 14 }, (_, i) => ({
-  src: `/galeria/representante/${i + 1}.jpg`,
+const recientesPhotos: GalleryPhoto[] = Array.from({ length: 63 }, (_, i) => ({
+  src: `/galeria/recientes/${i + 1}.jpg`,
   caption: '',
-  featured: [1, 5, 10, 13].includes(i + 1),
-}));
-
-const corantioquiaPhotos: GalleryPhoto[] = Array.from({ length: 22 }, (_, i) => ({
-  src: `/galeria/corantioquia/${i + 1}.jpg`,
-  caption: '',
-  featured: [1, 4, 8, 12, 16, 20].includes(i + 1),
-}));
-
-const asambleaPhotos: GalleryPhoto[] = Array.from({ length: 22 }, (_, i) => ({
-  src: `/galeria/asamblea/${i + 1}.jpg`,
-  caption: '',
-  featured: [1, 6, 11, 16, 20].includes(i + 1),
+  featured: [1, 5, 10, 20, 35, 50].includes(i + 1),
 }));
 
 const sections: GallerySection[] = [
-  { id: 'recientes', photos: loosePhotos },
-  {
-    id: 'corantioquia',
-    role: 'Directora General',
-    institution: 'Corantioquia',
-    photos: corantioquiaPhotos,
-  },
-  {
-    id: 'asamblea',
-    role: 'Diputada',
-    institution: 'Asamblea Departamental de Antioquia',
-    photos: asambleaPhotos,
-  },
+  { id: 'recientes', role: 'Fotos Recientes', institution: 'Últimas fotografías de la gestión legislativa — 2026', photos: recientesPhotos },
 ];
 
 export default function Galeria() {
@@ -72,7 +48,6 @@ export default function Galeria() {
 
   const goNext = () => {
     if (currentPos < allPhotos.length - 1) {
-      allPhotos[currentPos + 1];
       setLightbox(allPhotos[currentPos + 1]);
     }
   };
@@ -100,12 +75,12 @@ export default function Galeria() {
       : null;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 bg-neutral-50">
       <div className="text-center max-w-3xl mx-auto mb-12">
-        <h2 className="text-3xl font-bold text-ant-blue-dark sm:text-4xl">
+        <h2 className="text-3xl font-bold text-neutral-900 sm:text-4xl font-display tracking-tight">
           Galería
         </h2>
-        <p className="text-gray-500 mt-3 text-base font-sans">
+        <p className="text-neutral-600 mt-3 text-base">
           Archivo fotográfico de la trayectoria institucional de Ana Ligia Mora Martínez.
         </p>
       </div>
@@ -114,11 +89,11 @@ export default function Galeria() {
         {sections.map((section, sIdx) => (
           <section key={section.id}>
             {section.role && (
-              <div className="mb-6 pb-4 border-b border-gray-200">
-                <h3 className="text-xl font-bold text-ant-blue font-serif">
+              <div className="mb-6 pb-4 border-b border-neutral-200">
+                <h3 className="text-xl font-bold text-primary font-serif">
                   {section.role}
                 </h3>
-                <p className="text-sm text-gray-500 font-sans mt-1">
+                <p className="text-sm text-neutral-500 mt-1">
                   {section.institution}
                 </p>
               </div>
@@ -129,15 +104,16 @@ export default function Galeria() {
                 <button
                   key={pIdx}
                   onClick={() => setLightbox({ sectionIdx: sIdx, photoIdx: pIdx })}
-                  className={`group relative overflow-hidden bg-gray-100 focus:outline-none focus:ring-2 focus:ring-ant-blue ${
+                  className={`group relative overflow-hidden bg-neutral-100 aspect-square focus:outline-none focus:ring-2 focus:ring-primary ${
                     photo.featured ? 'col-span-2 row-span-2' : ''
                   }`}
                 >
                   <img
                     src={photo.src}
                     alt={`Foto ${pIdx + 1}`}
-                    className="w-full h-full object-cover transition duration-300 group-hover:scale-105"
+                    className="absolute inset-0 w-full h-full object-cover transition duration-300 group-hover:scale-105"
                     loading="lazy"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = '0'; }}
                   />
                   {photo.caption && (
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-3 opacity-0 group-hover:opacity-100 transition-opacity">

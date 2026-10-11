@@ -22,19 +22,6 @@ export interface Proposal {
   acts: string[]; // Associated laws or draft bills (e.g. PL 244/2024)
 }
 
-export interface SimulatorProfile {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
-  relevance: {
-    proposalId: string;
-    level: 'MUY ALTA' | 'ALTA' | 'MEDIA';
-    impact: 'high' | 'medium';
-    explanation: string;
-  }[];
-}
-
 export type PQRSDType = 'Petición' | 'Queja' | 'Reclamo' | 'Sugerencia' | 'Felicitación';
 export type PQRSDStatus = 'Radicado' | 'En Revisión' | 'Asignado' | 'Resuelto';
 
@@ -87,12 +74,17 @@ export interface ChatMessage {
 
 export type BillStatus = 'Radicado' | 'Primer Debate' | 'Segundo Debate' | 'Tercer Debate' | 'Cuarto Debate' | 'Sanción Presidencial' | 'Ley de la República';
 
+export type BillTipo = 'Proyecto de Ley' | 'Ponencia' | 'Proposición' | 'Moción' | 'Otro';
+
+export type GestionStatus = 'Radicado' | 'En trámite' | 'En análisis' | 'Aprobado';
+
 export interface FiledBill {
   id: string | number;
   title: string;
   number: string;
   dateFiled: string;
-  status: BillStatus;
+  status: BillStatus | GestionStatus;
+  tipo: BillTipo;
   stageDescription: string;
   summary: string;
   proposalIdRelated: string;
@@ -109,7 +101,7 @@ export interface AdminUser {
   id: number;
   name: string;
   email: string;
-  is_active: number;
+  is_active: boolean;
   created_at: string;
 }
 
@@ -121,4 +113,30 @@ export interface AuditEntry {
   targetId: string | null;
   details: string | null;
   createdAt: string;
+}
+
+export interface Ponencia {
+  id: string;
+  title: string;
+  type: BillTipo;
+  category: string;
+  date: string;
+  status: BillStatus | GestionStatus;
+  description: string;
+  shortDescription: string;
+  author: string;
+  acts?: string[];
+  documents?: string[];
+}
+
+export interface BlogPost {
+  id: string;
+  title: string;
+  excerpt: string;
+  content: string;
+  category: string;
+  date: string;
+  image?: string;
+  author: string;
+  tags: string[];
 }

@@ -7,13 +7,11 @@
  *
  * Uso:
  *   npx tsx scripts/seed_admin_user.ts "Nombre Apellido" correo@despacho.co "clave-segura"
- *
- * Si se omite la clave, se pide interactivamente (no se muestra en pantalla).
  */
 
 import 'dotenv/config';
 import readline from 'readline';
-import { createUser, getUserByEmail, listUsers } from '../src/server/db.js';
+import { ensureSchema, createUser, getUserByEmail, listUsers } from '../src/server/db.js';
 
 const [nameArg, emailArg, passwordArg] = process.argv.slice(2);
 
@@ -28,6 +26,7 @@ function promptPassword(): Promise<string> {
 }
 
 async function main() {
+  await ensureSchema();
   const name = (nameArg || '').trim();
   const email = (emailArg || '').trim().toLowerCase();
   if (!name || !email) {
@@ -43,16 +42,17 @@ async function main() {
     console.error('La clave debe tener al menos 8 caracteres.');
     process.exit(1);
   }
-  if (getUserByEmail(email)) {
+  if (await getUserByEmail(email)) {
     console.error(`Ya existe un usuario con el correo ${email}.`);
     process.exit(1);
   }
-  const user = createUser({ name, email, password });
+  const user = await createUser({ name, email, password });
   console.log(`✔ Usuario del Despacho creado:`);
   console.log(`   Nombre : ${user.name}`);
   console.log(`   Correo : ${user.email}`);
   console.log(`\nUsuarios del Despacho:`);
-  for (const u of listUsers()) {
+  const users = await listUsers();
+  for (const u of users) {
     console.log(`  • ${u.name} <${u.email}> ${u.is_active ? '' : '(desactivado)'}`);
   }
 }

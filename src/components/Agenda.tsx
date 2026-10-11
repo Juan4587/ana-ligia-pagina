@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { PROPOSALS, FILED_BILLS, BILL_TOPICS, billAxisLabel } from '../data';
 import { Proposal, FiledBill } from '../types';
+import { getStatusStyles as getBillStatusStyles, getTipoStyles } from './legislativeStyles';
 
 export default function Agenda() {
   // Main view switcher: Proposals vs Filed Bills
@@ -78,22 +79,11 @@ export default function Agenda() {
     }
   };
 
-  const getBillStatusStyles = (status: FiledBill['status']) => {
-    switch (status) {
-      case 'Radicado': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'Primer Debate': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'Segundo Debate': return 'bg-cyan-100 text-cyan-800 border-cyan-200';
-      case 'Tercer Debate': return 'bg-purple-100 text-purple-800 border-purple-200';
-      case 'Cuarto Debate': return 'bg-violet-100 text-violet-800 border-violet-200';
-      case 'Sanción Presidencial': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'Ley de la República': return 'bg-ant-blue-light text-ant-blue-dark border-ant-blue/20';
-      default: return 'bg-slate-100 text-slate-800 border-slate-200';
-    }
-  };
+  const isPlainBill = (bill: FiledBill) => (bill.tipo || 'Proyecto de Ley') === 'Proyecto de Ley';
 
-  // Stepper progress value for bills
+  // Stepper progress value for bills (solo Proyectos de Ley)
   const getStageStep = (status: FiledBill['status']): number => {
-    const stages: FiledBill['status'][] = [
+    const stages: string[] = [
       'Radicado', 'Primer Debate', 'Segundo Debate', 'Tercer Debate', 'Cuarto Debate', 'Sanción Presidencial', 'Ley de la República'
     ];
     return stages.indexOf(status) + 1;
@@ -170,7 +160,7 @@ export default function Agenda() {
                 : 'text-slate-700 hover:text-slate-900 hover:bg-slate-300/50'
             }`}
           >
-            <span>Proyectos de Ley Radicados</span>
+            <span>Gestión Legislativa</span>
             <span className="inline-block bg-slate-900/10 text-slate-700 text-[10px] font-black px-2 py-0.5 rounded-full">
               {bills.length}
             </span>
@@ -256,7 +246,7 @@ export default function Agenda() {
                 type="text"
                 value={billSearch}
                 onChange={(e) => setBillSearch(e.target.value)}
-                placeholder="Buscar por número de ley, palabra clave, ponentes..."
+                placeholder="Buscar por número, palabra clave, tipo..."
                 className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-ant-blue focus:bg-white rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 focus:outline-none transition-all"
               />
             </div>
@@ -282,7 +272,7 @@ export default function Agenda() {
 
             <div className="md:col-span-2 text-right">
               <span className="text-xs text-slate-400 font-bold uppercase">
-                {filteredBills.length} Proyectos
+                {filteredBills.length} Gestiones
               </span>
             </div>
 
@@ -296,13 +286,13 @@ export default function Agenda() {
           ) : bills.length === 0 ? (
             <div className="text-center py-16 bg-white border border-slate-200 rounded-3xl text-slate-400 space-y-3">
               <FileSpreadsheet className="h-12 w-12 mx-auto text-slate-300 animate-pulse" />
-              <p className="text-sm font-semibold text-slate-600">Próximamente se listarán aquí los proyectos de ley radicados.</p>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">Nuestro equipo técnico está consolidando el articulado oficial de las propuestas que serán radicadas para la Agenda Legislativa de Ana Ligia.</p>
+              <p className="text-sm font-semibold text-slate-600">Próximamente se listarán aquí las gestiones legislativas radicadas.</p>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">Nuestro equipo técnico está consolidando los proyectos de ley, ponencias y proposiciones que integran la Agenda Legislativa de Ana Ligia.</p>
             </div>
           ) : filteredBills.length === 0 ? (
             <div className="text-center py-16 bg-white border border-slate-200 rounded-3xl text-slate-400 space-y-3">
               <FileSpreadsheet className="h-12 w-12 mx-auto text-slate-300" />
-              <p className="text-sm font-semibold">No se encontraron proyectos de ley que coincidan con la búsqueda.</p>
+              <p className="text-sm font-semibold">No se encontraron gestiones que coincidan con la búsqueda.</p>
               <button
                 onClick={() => { setBillSearch(''); setBillFilterCategory('Todos'); }}
                 className="text-xs text-ant-blue font-bold hover:underline"
@@ -315,6 +305,8 @@ export default function Agenda() {
               {filteredBills.map((bill) => {
                 const isSigned = Boolean(signedBills[bill.id]);
                 const signCount = bill.supportCount ?? 0;
+                const plain = isPlainBill(bill);
+                const tipo = bill.tipo || 'Proyecto de Ley';
 
                 return (
                   <div
@@ -324,10 +316,15 @@ export default function Agenda() {
                     <div className="space-y-4">
                       {/* Badge and Title */}
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                        <span className="text-[10px] font-mono font-bold uppercase bg-slate-100 text-slate-600 px-2.5 py-1 rounded">
-                          {bill.number}
-                        </span>
-                        
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-mono font-bold uppercase bg-slate-100 text-slate-600 px-2.5 py-1 rounded">
+                            {bill.number}
+                          </span>
+                          <span className={`text-[9px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full border ${getTipoStyles(tipo)}`}>
+                            {tipo}
+                          </span>
+                        </div>
+
                         <span className={`text-[9px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full border ${getBillStatusStyles(bill.status)}`}>
                           Estado: {bill.status}
                         </span>
@@ -346,20 +343,21 @@ export default function Agenda() {
                         {bill.summary}
                       </p>
 
-                      {/* Timeline Quick Indicator */}
-                      <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-2 text-left">
-                        <div className="flex items-center justify-between text-[10px]">
-                          <span className="font-bold text-slate-500">Progreso en el Congreso</span>
-                          <span className="font-black text-ant-blue font-mono">Paso {getStageStep(bill.status)} de 7</span>
+                      {/* Timeline Quick Indicator — solo Proyectos de Ley */}
+                      {plain && (
+                        <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-2 text-left">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="font-bold text-slate-500">Progreso en el Congreso</span>
+                            <span className="font-black text-ant-blue font-mono">Paso {getStageStep(bill.status)} de 7</span>
+                          </div>
+                          <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-ant-blue rounded-full"
+                              style={{ width: `${(getStageStep(bill.status) / 7) * 100}%` }}
+                            />
+                          </div>
                         </div>
-                        {/* Custom Micro Progress track bar */}
-                        <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-ant-blue rounded-full"
-                            style={{ width: `${(getStageStep(bill.status) / 7) * 100}%` }}
-                          />
-                        </div>
-                      </div>
+                      )}
 
                       {/* Key initiatives mini list */}
                       <div className="space-y-1 text-left">
@@ -376,11 +374,15 @@ export default function Agenda() {
                     </div>
 
                     <div className="mt-6 border-t border-slate-100 pt-4 flex items-center justify-between gap-4">
-                      {/* Support indicator */}
-                      <div className="flex items-center space-x-1 text-xs font-semibold text-slate-400">
-                        <Heart className={`h-4 w-4 ${isSigned ? 'text-red-500 fill-red-500' : 'text-slate-300'}`} />
-                        <span>{signCount} respaldos</span>
-                      </div>
+                      {/* Support indicator — solo Proyectos de Ley */}
+                      {plain ? (
+                        <div className="flex items-center space-x-1 text-xs font-semibold text-slate-400">
+                          <Heart className={`h-4 w-4 ${isSigned ? 'text-red-500 fill-red-500' : 'text-slate-300'}`} />
+                          <span>{signCount} respaldos</span>
+                        </div>
+                      ) : (
+                        <div />
+                      )}
 
                       {/* Primary actions */}
                       <div className="flex space-x-2">
@@ -390,29 +392,31 @@ export default function Agenda() {
                         >
                           Ver detalle
                         </button>
-                        
-                        <button
-                          onClick={() => {
-                            if (!isSigned) {
-                              setSigningBillId(bill.id);
-                            }
-                          }}
-                          disabled={isSigned}
-                          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1 ${
-                            isSigned
-                              ? 'bg-ant-blue-light text-ant-blue-dark border border-ant-blue-light'
-                              : 'bg-ant-blue text-white hover:bg-ant-blue shadow-sm'
-                          }`}
-                        >
-                          {isSigned ? (
-                            <>
-                              <Check className="h-3 w-3" />
-                              <span>Respaldado</span>
-                            </>
-                          ) : (
-                            <span>Respaldar Proyecto</span>
-                          )}
-                        </button>
+
+                        {plain && (
+                          <button
+                            onClick={() => {
+                              if (!isSigned) {
+                                setSigningBillId(bill.id);
+                              }
+                            }}
+                            disabled={isSigned}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1 ${
+                              isSigned
+                                ? 'bg-ant-blue-light text-ant-blue-dark border border-ant-blue-light'
+                                : 'bg-ant-blue text-white hover:bg-ant-blue shadow-sm'
+                            }`}
+                          >
+                            {isSigned ? (
+                              <>
+                                <Check className="h-3 w-3" />
+                                <span>Respaldado</span>
+                              </>
+                            ) : (
+                              <span>Respaldar Proyecto</span>
+                            )}
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -438,7 +442,8 @@ export default function Agenda() {
                 </div>
                 <div className="text-left">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-ant-gold">
-                    {selectedBill.number} · Radicado el {new Date(selectedBill.dateFiled).toLocaleDateString()}
+                    {selectedBill.number} · {(selectedBill.tipo || 'Proyecto de Ley')}
+                    {selectedBill.dateFiled ? ` · Radicado el ${new Date(selectedBill.dateFiled).toLocaleDateString()}` : ''}
                   </span>
                   <h3 className="text-xl font-extrabold text-white mt-1 leading-tight max-w-xl">
                     {selectedBill.title}
@@ -456,7 +461,8 @@ export default function Agenda() {
             {/* Body */}
             <div className="p-6 md:p-8 space-y-8">
               
-              {/* Stepper Interactive Timeline */}
+              {/* Stepper Interactive Timeline — solo Proyectos de Ley */}
+              {isPlainBill(selectedBill) && (
               <div className="bg-slate-50 border border-slate-100 p-6 rounded-2xl">
                 <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-6 text-center">
                   Línea de Trámite en el Congreso de la República (Leyes Ordinarias)
@@ -522,6 +528,7 @@ export default function Agenda() {
                   </p>
                 </div>
               </div>
+              )}
 
               {/* Summary and content */}
               <div className="grid gap-6 md:grid-cols-12 items-start">
@@ -576,7 +583,8 @@ export default function Agenda() {
                     </div>
                   </div>
 
-                  {/* Short citizen backing count card */}
+                  {/* Short citizen backing count card — solo Proyectos de Ley */}
+                  {isPlainBill(selectedBill) && (
                   <div className="bg-ant-blue text-white rounded-2xl p-5 space-y-3 text-center relative overflow-hidden">
                     <Heart className="h-12 w-12 text-white/15 absolute right-0 bottom-0 translate-x-2 translate-y-2 transform" />
                     <h6 className="text-xs font-bold uppercase tracking-wider">Apoyo Ciudadano Recibido</h6>
@@ -585,6 +593,7 @@ export default function Agenda() {
                       Este proyecto tiene un gran interés social en Antioquia. Apóyalo para visibilizar el clamor regional.
                     </p>
                   </div>
+                  )}
                 </div>
 
               </div>

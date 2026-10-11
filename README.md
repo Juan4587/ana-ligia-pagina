@@ -67,10 +67,6 @@ npm run build     # compila el frontend y bundlea server.cjs
 npm start         # sirve el sitio + API (exige NODE_ENV=production en el host)
 ```
 
-### Despliegue en Railway
-
-Ver `DEPLOY.md` para los pasos, variables de entorno y persistencia de `data/`.
-
 ### Respaldos
 
 Todo el contenido está en la carpeta **`data/`** (base de datos + archivos subidos).

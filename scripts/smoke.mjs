@@ -2,18 +2,18 @@
  * Pruebas de humo del API del portal PQRSD.
  *
  * Requiere que el servidor esté corriendo. El URL se toma de la variable
- * APP_URL o de http://localhost:3000 por defecto (Railway: export APP_URL=...).
+ * APP_URL o de http://localhost:3000 por defecto.
  *
- * Crea automáticamente el usuario de prueba en la base local (si no existe).
+ * PREREQUISITO: Ejecutar antes npm run seed:admin para crear el usuario
+ * de prueba (test-admin@despacho.co). Este script ya no crea usuarios
+ * automáticamente.
  *
  * Uso:
- *   npm run dev        (en otra terminal)
+ *   npm run seed:admin   (una vez, o si el usuario fue eliminado)
+ *   npm run dev          (en otra terminal)
  *   npm run smoke
  */
 
-import Database from 'better-sqlite3';
-import path from 'path';
-import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -21,17 +21,6 @@ dotenv.config();
 const BASE = (process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
 const TEST_EMAIL = 'test-admin@despacho.co';
 const TEST_PASS = 'test-admin-clave-segura';
-
-// Asegura el usuario de prueba en la base local
-const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'data'));
-const db = new Database(path.join(DATA_DIR, 'app.db'));
-const existing = db.prepare('SELECT id FROM admin_users WHERE email = ?').get(TEST_EMAIL);
-if (!existing) {
-  db.prepare('INSERT INTO admin_users (name, email, password_hash, is_active, created_at) VALUES (?, ?, ?, 1, ?)')
-    .run('Usuario de Pruebas', TEST_EMAIL, bcrypt.hashSync(TEST_PASS, 12), new Date().toISOString());
-  console.log(`Usuario de prueba creado: ${TEST_EMAIL}`);
-}
-db.close();
 
 let passed = 0, failed = 0;
 
@@ -66,6 +55,25 @@ async function main() {
 
   r = await req('/api/admin/me', { token: TOKEN });
   ok('me devuelve la sesión activa', r.status === 200 && (await r.json()).email === TEST_EMAIL);
+
+  // Auth: usuario desactivado no puede entrar aunque la clave sea correcta
+  console.log('\n[1.1] Auth: usuario desactivado');
+  const inactiveEmail = `test-inactive-${Date.now()}@despacho.co`;
+  const inactivePass = 'test-inactive-clave-segura';
+  r = await req('/api/admin/users', { method: 'POST', token: TOKEN, json: { name: 'Inactivo', email: inactiveEmail, password: inactivePass } });
+  const inactiveUser = r.status === 201 ? await r.json() : null;
+  ok('crear usuario temporal para prueba de desactivación', !!inactiveUser, `got ${r.status}`);
+  if (inactiveUser) {
+    try {
+      r = await req(`/api/admin/users/${inactiveUser.id}`, { method: 'PATCH', token: TOKEN, json: { isActive: false } });
+      ok('desactivar usuario temporal', r.status === 200, `got ${r.status}`);
+      r = await req('/api/admin/auth', { method: 'POST', json: { email: inactiveEmail, password: inactivePass } });
+      ok('auth rechaza usuario desactivado aunque la clave sea correcta (403)', r.status === 403, `got ${r.status}`);
+    } finally {
+      await req(`/api/admin/users/${inactiveUser.id}`, { method: 'PATCH', token: TOKEN, json: { isActive: true } });
+      await req(`/api/admin/users/${inactiveUser.id}`, { method: 'DELETE', token: TOKEN });
+    }
+  }
 
   // El endpoint público inseguro ya no debe existir
   r = await req('/api/pqrsd/list');
@@ -198,6 +206,43 @@ async function main() {
 
   r = await req(`/api/admin/bills/${bill.id}`, { method: 'DELETE', token: TOKEN });
   ok('eliminar proyecto de ley', r.status === 200);
+
+  // Newsletter
+  console.log('\n[9.2] Suscripción al boletín');
+  const nlEmail = `boletin-${Date.now()}@test.co`;
+  r = await req('/api/newsletter/subscribe', {
+    method: 'POST',
+    json: { email: nlEmail, source: 'blog-sidebar' },
+  });
+  const nlData = await r.json();
+  ok('suscripción registrada (201)', r.status === 201, `got ${r.status}`);
+  ok('suscripción devuelve subscriberCount >= 1', nlData.subscriberCount >= 1);
+  ok('suscripción incluye flag emailed (boolean)', typeof nlData.emailed === 'boolean');
+
+  r = await req('/api/newsletter/subscribe', {
+    method: 'POST',
+    json: { email: nlEmail, source: 'blog-sidebar' },
+  });
+  const nlDup = await r.json();
+  ok('suscripción duplicada es idempotente (200, already=true)', r.status === 200 && nlDup.already === true, `got ${r.status}`);
+  ok('duplicada no envía correo de nuevo', nlDup.emailed === false);
+
+  r = await req('/api/newsletter/subscribe', {
+    method: 'POST',
+    json: { email: 'no-es-correo' },
+  });
+  ok('suscripción rechaza correo inválido (400)', r.status === 400, `got ${r.status}`);
+
+  r = await req('/api/newsletter/subscribe', { method: 'POST', json: {} });
+  ok('suscripción rechaza correo vacío (400)', r.status === 400, `got ${r.status}`);
+
+  r = await req('/api/admin/newsletter', { token: TOKEN });
+  const nlList = await r.json();
+  ok('admin lista suscriptores (200)', r.status === 200, `got ${r.status}`);
+  ok('listado incluye total y el email registrado', nlList.total >= 1 && nlList.items?.some((s) => s.email === nlEmail));
+
+  r = await req('/api/admin/newsletter');
+  ok('listado newsletter exige sesión (401)', r.status === 401, `got ${r.status}`);
 
   // Logout
   console.log('\n[10] Cierre de sesión');

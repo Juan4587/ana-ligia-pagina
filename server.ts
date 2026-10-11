@@ -9,27 +9,46 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
-import { PROPOSALS } from './src/data.js';
+import { PROPOSALS, PONENCIAS, BLOG_POSTS } from './src/data.js';
 import * as db from './src/server/db.js';
 import { decrypt } from './src/server/crypto.js';
 import * as mail from './src/server/email.js';
-import * as ai from './src/server/ai.js';
+import { resolveClientIp } from './src/server/ip.js';
 
 const APP_URL = process.env.APP_URL || '';
-
-/** Sesiones activas del Despacho. Persisten solo en memoria (UUID por sesión). */
-const sessions = new Map<string, { email: string; name: string; createdAt: number }>();
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
-function makeRadicadoId(): string {
+interface AcuseInput {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  categoryName: string;
+}
+
+/**
+ * Acuse institucional del radicado PQRSD.
+ * Triage manual: no hay IA — plantilla determinista local.
+ */
+function buildAcuse(input: AcuseInput): string {
+  return (
+    `Estimado(a) ${input.firstName} ${input.lastName}, su radicado número ${input.id} ha sido registrado exitosamente en nuestro sistema ` +
+    `bajo la categoría "${input.categoryName}". Nuestro equipo legislativo revisará los detalles del asunto descrito en un lapso ` +
+    `no mayor a 10 días hábiles. Nos comunicaremos con usted al correo ${input.email || 'registrado'} o al teléfono ${input.phone || 'registrado'}. ` +
+    `Atentamente, Despacho de la Congresista Ana Ligia Mora Martínez.`
+  );
+}
+
+async function makeRadicadoId(): Promise<string> {
   const year = new Date().getFullYear();
   let id = '';
   do {
     id = `RAD-ALM-${year}-${Math.floor(1000 + Math.random() * 9000)}`;
-  } while (db.getSubmissionById(id));
+  } while (await db.getSubmissionById(id));
   return id;
 }
 
@@ -48,13 +67,13 @@ function serializeSubmission(row: db.SubmissionRow) {
     aiResponse: db.submissionAiResponse(row),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    emailSent: row.email_sent === 1,
-    despachoNotified: row.despacho_notified === 1,
-    anonymized: row.anonymized === 1,
+    emailSent: row.email_sent,
+    despachoNotified: row.despacho_notified,
+    anonymized: row.anonymized,
   };
 }
 
-function serializeBill(row: db.BillRow) {
+async function serializeBill(row: db.BillRow) {
   let authors: string[] = [];
   let initiatives: string[] = [];
   try { authors = row.authors ? JSON.parse(row.authors) : []; } catch { authors = []; }
@@ -63,52 +82,78 @@ function serializeBill(row: db.BillRow) {
     id: row.id,
     title: row.title,
     number: row.number,
-    dateFiled: row.dateFiled,
+    dateFiled: row.datefiled,
     status: row.status,
-    stageDescription: row.stageDescription,
+    tipo: row.tipogestion || 'Proyecto de Ley',
+    stageDescription: row.stagedescription,
     summary: row.summary,
-    proposalIdRelated: row.proposalIdRelated,
+    proposalIdRelated: row.proposalidrelated,
     authors,
     initiatives,
-    impactScore: row.impactScore,
+    impactScore: row.impactscore,
     hasFile: Boolean(row.stored_name),
     filename: row.filename,
     size: row.size,
-    supportCount: db.countBillSupports(row.id),
+    supportCount: await db.countBillSupports(row.id),
     createdAt: row.created_at,
   };
 }
 
+function serializePost(row: db.BlogPostRow) {
+  let tags: string[] = [];
+  try { tags = row.tags ? JSON.parse(row.tags) : []; } catch { tags = []; }
+  return { ...row, tags };
+}
+
+function serializePonenciaFromBill(row: db.BillRow) {
+  let authors: string[] = [];
+  let initiatives: string[] = [];
+  try { authors = row.authors ? JSON.parse(row.authors) : []; } catch { authors = []; }
+  try { initiatives = row.initiatives ? JSON.parse(row.initiatives) : []; } catch { initiatives = []; }
+  return {
+    id: String(row.id),
+    title: row.title,
+    type: row.tipogestion || 'Proyecto de Ley',
+    category: row.proposalidrelated || 'general',
+    date: row.datefiled || row.created_at,
+    status: row.status,
+    description: row.summary || row.stagedescription || '',
+    shortDescription: row.stagedescription || row.summary || '',
+    author: authors[0] || 'Ana Ligia Mora Martínez',
+    acts: initiatives,
+  };
+}
+
 /* ------------------------------------------------------------------ */
-/* Seguridad: sesiones admin (auth por email+clave) + tasa de radicados */
+/* Seguridad: sesiones admin (DB) + tasa de radicados                 */
 /* ------------------------------------------------------------------ */
 
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas
 
-function createSession(user: db.AdminUserRow): string {
+async function createSession(user: db.AdminUserRow): Promise<string> {
   const token = crypto.randomUUID();
-  sessions.set(token, { email: user.email, name: user.name, createdAt: Date.now() });
+  await db.createSessionRow(token, user.email, user.name);
   return token;
 }
 
-function destroySession(token: string): void {
-  sessions.delete(token);
+async function destroySession(token: string): Promise<void> {
+  await db.destroySessionRow(token);
 }
 
-function getSession(token: string): { email: string; name: string; createdAt: number } | undefined {
-  const s = sessions.get(token);
-  if (!s) return undefined;
-  if (Date.now() - s.createdAt > SESSION_TTL_MS) {
-    sessions.delete(token);
+async function getSession(token: string): Promise<{ email: string; name: string } | undefined> {
+  const row = await db.getSessionRow(token);
+  if (!row) return undefined;
+  if (Date.now() - new Date(row.created_at).getTime() > SESSION_TTL_MS) {
+    await db.destroySessionRow(token);
     return undefined;
   }
-  return s;
+  return { email: row.email, name: row.name };
 }
 
-function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+async function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-  const session = token ? getSession(token) : undefined;
+  const session = token ? await getSession(token) : undefined;
   if (!session) {
     res.status(401).json({ error: 'Sesión no válida o expirada. Ingrese con su correo y clave del Despacho.' });
     return;
@@ -120,26 +165,58 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
   next();
 }
 
-// Tasa límite simple: máx. 8 radicados por hora por IP
+// Tasa límite simple: por defecto 8 radicados por hora por IP
 const rateBuckets = new Map<string, number[]>();
-function rateLimitIp(ip: string): boolean {
+function rateLimitIp(ip: string, max = 8, windowMs = 60 * 60 * 1000, scope = 'default'): boolean {
   const now = Date.now();
-  const windowMs = 60 * 60 * 1000;
+  const key = `${scope}|${ip}`;
   if (rateBuckets.size > 1000) {
-    for (const [key, timestamps] of rateBuckets.entries()) {
+    for (const [k, timestamps] of rateBuckets.entries()) {
       const active = timestamps.filter((t) => now - t < windowMs);
-      if (active.length === 0) rateBuckets.delete(key);
-      else rateBuckets.set(key, active);
+      if (active.length === 0) rateBuckets.delete(k);
+      else rateBuckets.set(k, active);
     }
   }
-  const hits = (rateBuckets.get(ip) || []).filter((t) => now - t < windowMs);
-  if (hits.length >= 8) {
-    rateBuckets.set(ip, hits);
+  const hits = (rateBuckets.get(key) || []).filter((t) => now - t < windowMs);
+  if (hits.length >= max) {
+    rateBuckets.set(key, hits);
     return false;
   }
   hits.push(now);
-  rateBuckets.set(ip, hits);
+  rateBuckets.set(key, hits);
   return true;
+}
+
+/* Bloqueo progresivo de intentos de sesión (por IP y por correo intentado) */
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;      // ventana para contar fallos
+const LOGIN_MAX_FAILS = 5;                    // fallos antes de bloquear
+const LOGIN_FAIL_TTL_MS = 4 * 60 * 60 * 1000; // retención máxima en memoria
+const loginFails = new Map<string, number[]>();
+
+function recordLoginFail(key: string): void {
+  const now = Date.now();
+  if (loginFails.size > 1000) {
+    for (const [k, ts] of loginFails.entries()) {
+      const alive = ts.filter((t) => now - t < LOGIN_FAIL_TTL_MS);
+      if (alive.length === 0) loginFails.delete(k); else loginFails.set(k, alive);
+    }
+  }
+  const arr = (loginFails.get(key) || []).filter((t) => now - t < LOGIN_FAIL_TTL_MS);
+  arr.push(now);
+  loginFails.set(key, arr);
+}
+
+function loginLockState(key: string): { locked: boolean; retrySec: number } {
+  const now = Date.now();
+  const arr = (loginFails.get(key) || []).filter((t) => now - t < LOGIN_FAIL_TTL_MS);
+  if (arr.length) loginFails.set(key, arr); else loginFails.delete(key);
+  const recent = arr.filter((t) => now - t < LOGIN_WINDOW_MS);
+  if (recent.length < LOGIN_MAX_FAILS) return { locked: false, retrySec: 0 };
+  const last = recent[recent.length - 1];
+  const tier = Math.min(recent.length - LOGIN_MAX_FAILS, 3);       // 0..3
+  const until = last + LOGIN_WINDOW_MS * Math.pow(2, tier);        // 15m, 30m, 1h, 2h
+  if (now >= until) return { locked: false, retrySec: 0 };
+  return { locked: true, retrySec: Math.ceil((until - now) / 1000) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -162,8 +239,17 @@ const billStorage = multer.diskStorage({
   },
 });
 
+const blogCoverStorage = multer.diskStorage({
+  destination: db.uploadsBlogDir,
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase().slice(0, 10);
+    cb(null, `${crypto.randomUUID()}${ext}`);
+  },
+});
+
 const ALLOWED_PQRS = /\.(pdf|png|jpe?g|webp|gif|docx?|txt|xlsx?)$/i;
 const ALLOWED_BILL = /\.(pdf|docx?|txt)$/i;
+const ALLOWED_BLOG_COVER = /\.(png|jpe?g|webp|gif)$/i;
 
 const uploadPqrs = multer({
   storage: pqrsStorage,
@@ -180,6 +266,15 @@ const uploadBill = multer({
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_BILL.test(file.originalname)) cb(null, true);
     else cb(new Error('Tipo de archivo no permitido para un proyecto de ley. Use PDF, DOC o TXT.'));
+  },
+});
+
+const uploadBlogCover = multer({
+  storage: blogCoverStorage,
+  limits: { files: 1, fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_BLOG_COVER.test(file.originalname)) cb(null, true);
+    else cb(new Error('La portada debe ser PNG, JPG, WEBP o GIF.'));
   },
 });
 
@@ -200,27 +295,36 @@ function multerErrorWrapper(fn: express.RequestHandler): express.RequestHandler 
 }
 
 async function startServer() {
+  const isProd = process.env.NODE_ENV === 'production';
+  const distIndexPath = path.join(process.cwd(), 'dist', 'index.html');
+  if (isProd && !fs.existsSync(distIndexPath)) {
+    console.error('[FATAL] dist/index.html no encontrado — corre "npm run build" antes de iniciar en producción.');
+    process.exit(1);
+  }
+
+  // Inicializar esquema PostgreSQL antes de configurar rutas
+  await db.ensureSchema();
+
   const app = express();
 
   app.set('trust proxy', 1);
   app.use(express.json({ limit: '1mb' }));
 
-  // Política de retención: anonimiza automáticamente radicados inactivos,
-  // y al cierre del periodo legislativo anonimiza todo y borra adjuntos.
+  // Política de retención
   const retentionDays = Number(process.env.ANONYMIZE_AFTER_DAYS || 1460);
   const periodEnd = process.env.PERIOD_END_DATE || '';
-  const runRetention = () => {
+  const runRetention = async () => {
     try {
-      const n = db.autoAnonymizeOlderThan(retentionDays);
+      const n = await db.autoAnonymizeOlderThan(retentionDays);
       if (n > 0) console.log(`[retención] ${n} radicado(s) anonimizado(s) automáticamente.`);
-      const purged = db.purgePeriodEnd(periodEnd);
+      const purged = await db.purgePeriodEnd(periodEnd);
       if (purged > 0) console.log(`[retención] Cierre de periodo ejecutado: ${purged} radicado(s) procesado(s).`);
     } catch (err) {
       console.error('[retención] Error:', err);
     }
   };
-  runRetention();
-  setInterval(runRetention, 6 * 60 * 60 * 1000).unref();
+  await runRetention();
+  setInterval(() => { runRetention().catch(() => {}); }, 6 * 60 * 60 * 1000).unref();
 
   /* ---------- API pública ---------- */
 
@@ -232,11 +336,97 @@ async function startServer() {
     res.json(PROPOSALS);
   });
 
-  // Radicar un requerimiento ciudadano (multipart: campos + adjuntos opcionales)
+  // Gestión legislativa: ponencias, proposiciones y proyectos (unificados en bills)
+  app.get('/api/ponencias', async (_req, res) => {
+    try {
+      const bills = await db.listBills();
+      const items = bills.map(serializePonenciaFromBill);
+      if (items.length === 0) {
+        // Seed from data.ts if DB is empty
+        for (const p of PONENCIAS) {
+          await db.insertBill({
+            title: p.title,
+            number: String(p.id),
+            dateFiled: p.date,
+            status: p.status,
+            stageDescription: p.shortDescription,
+            summary: p.description,
+            authors: [p.author],
+            initiatives: p.acts || [],
+            tipoGestion: p.type,
+          });
+        }
+        const seeded = await db.listBills();
+        return res.json(seeded.map(serializePonenciaFromBill));
+      }
+      res.json(items);
+    } catch {
+      res.json(PONENCIAS);
+    }
+  });
+
+  // Blog Posts
+  app.get('/api/posts', async (_req, res) => {
+    try {
+      const posts = await db.listBlogPosts();
+      if (posts.length === 0) {
+        for (const p of BLOG_POSTS) {
+          await db.insertBlogPost(p);
+        }
+        const seeded = await db.listBlogPosts();
+        return res.json(seeded.map(serializePost));
+      }
+      res.json(posts.map(serializePost));
+    } catch {
+      res.json(BLOG_POSTS);
+    }
+  });
+
+  // Suscripción al boletín informativo
+  app.post('/api/newsletter/subscribe', async (req, res) => {
+    try {
+      const ip = resolveClientIp(req);
+      if (!rateLimitIp(ip, 10, 60 * 60 * 1000, 'newsletter')) {
+        res.status(429).json({ error: 'Demasiadas solicitudes desde esta conexión. Intente más tarde.' });
+        return;
+      }
+      const { email, source } = (req.body || {}) as { email?: string; source?: string };
+      const clean = (email || '').trim().toLowerCase();
+      if (!clean) {
+        res.status(400).json({ error: 'Ingrese su correo electrónico.' });
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
+        res.status(400).json({ error: 'El correo electrónico no es válido.' });
+        return;
+      }
+      const result = await db.insertNewsletterSubscriber(clean, source || 'blog-sidebar');
+      let emailed = false;
+      if (!result.already && mail.emailConfigured) {
+        // No bloquear la suscripción si Resend falla: el registro ya quedó en DB.
+        emailed = await mail.sendNewsletterWelcome(clean);
+      }
+      const count = await db.countNewsletterSubscribers();
+      res.status(result.already ? 200 : 201).json({
+        ok: true,
+        already: result.already,
+        emailed,
+        subscriberCount: count,
+        message: result.already
+          ? 'Este correo ya está suscrito al boletín.'
+          : '¡Gracias por suscribirte!',
+      });
+    } catch (err) {
+      console.error('[newsletter] Error suscripción:', err);
+      res.status(500).json({ error: 'No fue posible registrar la suscripción. Intente más tarde.' });
+    }
+  });
+
+  // Radicar un requerimiento ciudadano
   app.post('/api/pqrsd/submit', multerErrorWrapper(uploadPqrs.array('files', 4)), async (req, res) => {
     try {
-      const ip = req.ip || req.socket.remoteAddress || 'unknown';
-      if (!rateLimitIp(ip)) {
+      const ip = resolveClientIp(req);
+      if (!rateLimitIp(ip, 8, 60 * 60 * 1000, 'pqrsd')) {
         res.status(429).json({ error: 'Demasiados radicados desde esta conexión. Intente más tarde.' });
         return;
       }
@@ -255,23 +445,13 @@ async function startServer() {
         return;
       }
 
-      const id = makeRadicadoId();
+      const id = await makeRadicadoId();
       const matchedProposal = PROPOSALS.find((p) => p.id === proposalId);
       const categoryName = matchedProposal ? matchedProposal.title : 'Consulta Ciudadana General';
 
-      const triage = await ai.generateTriageAndResponse({
-        id,
-        firstName,
-        lastName,
-        email,
-        phone,
-        type,
-        categoryName,
-        description,
-      });
-      const aiResponse = triage.aiResponse;
+      const aiResponse = buildAcuse({ id, firstName, lastName, email, phone, categoryName });
 
-      const row = db.insertSubmission({
+      const row = await db.insertSubmission({
         id,
         firstName,
         lastName,
@@ -287,7 +467,7 @@ async function startServer() {
       // Guardar adjuntos
       const files = (req as express.Request & { files?: Express.Multer.File[] }).files || [];
       for (const f of files) {
-        db.insertDocument({
+        await db.insertDocument({
           submission_id: id,
           filename: f.originalname.slice(0, 200),
           stored_name: path.basename(f.path),
@@ -297,14 +477,15 @@ async function startServer() {
       }
 
       const forEmail = { ...serializeSubmission(row), description };
-      // Notificaciones (no bloquean la respuesta; fallan silenciosamente si no hay email configurado)
+      // Notificaciones (no bloquean la respuesta)
       mail.sendCitizenReceipt(forEmail).then((ok) => ok && db.markEmailsSent(id, true, false));
       mail.sendDespachoNotification(forEmail).then((ok) => ok && db.markEmailsSent(id, false, true));
 
-      const created = db.getSubmissionById(id)!;
+      const created = (await db.getSubmissionById(id))!;
+      const docs = await db.listDocuments(id);
       res.status(201).json({
         ...serializeSubmission(created),
-        documents: db.listDocuments(id).map((d) => ({ id: d.id, filename: d.filename, size: d.size })),
+        documents: docs.map((d) => ({ id: d.id, filename: d.filename, size: d.size })),
       });
     } catch (err: any) {
       console.error('Error al procesar radicado:', err);
@@ -312,14 +493,19 @@ async function startServer() {
     }
   });
 
-  // Seguimiento ciudadano: solo con el número de radicado, sin datos personales
-  app.post('/api/pqrsd/track', (req, res) => {
+  // Seguimiento ciudadano
+  app.post('/api/pqrsd/track', async (req, res) => {
+    const ip = resolveClientIp(req);
+    if (!rateLimitIp(ip, 20, 60 * 60 * 1000, 'track')) {
+      res.status(429).json({ error: 'Demasiadas consultas desde esta conexión. Intente más tarde.' });
+      return;
+    }
     const { id } = (req.body || {}) as { id?: string };
     if (!id) {
       res.status(400).json({ error: 'Ingrese el número de radicado.' });
       return;
     }
-    const row = db.getSubmissionById(id.trim().toUpperCase());
+    const row = await db.getSubmissionById(id.trim().toUpperCase());
     if (!row) {
       res.status(404).json({ error: 'No se encontró ningún radicado con ese número.' });
       return;
@@ -333,17 +519,19 @@ async function startServer() {
       aiResponse: db.submissionAiResponse(row),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-      anonymized: row.anonymized === 1,
+      anonymized: row.anonymized,
     });
   });
 
   // Proyectos de ley (información pública)
-  app.get('/api/bills', (_req, res) => {
-    res.json(db.listBills().map(serializeBill));
+  app.get('/api/bills', async (_req, res) => {
+    const bills = await db.listBills();
+    const serialized = await Promise.all(bills.map(serializeBill));
+    res.json(serialized);
   });
 
-  app.get('/api/bills/:id/file', (req, res) => {
-    const bill = db.getBillById(Number(req.params.id));
+  app.get('/api/bills/:id/file', async (req, res) => {
+    const bill = await db.getBillById(Number(req.params.id));
     if (!bill?.stored_name) {
       res.status(404).json({ error: 'El proyecto de ley no tiene archivo adjunto.' });
       return;
@@ -357,11 +545,20 @@ async function startServer() {
     res.sendFile(filePath);
   });
 
-  // Respaldo cívico ciudadano a un proyecto de ley (sin token: lo firma el ciudadano)
+  // Respaldo cívico ciudadano (solo Proyectos de Ley)
   app.post('/api/bills/:id/support', async (req, res) => {
-    const bill = db.getBillById(Number(req.params.id));
+    const ip = resolveClientIp(req);
+    if (!rateLimitIp(ip, 10, 60 * 60 * 1000, 'support')) {
+      res.status(429).json({ error: 'Demasiadas solicitudes desde esta conexión. Intente más tarde.' });
+      return;
+    }
+    const bill = await db.getBillById(Number(req.params.id));
     if (!bill) {
       res.status(404).json({ error: 'El proyecto de ley no existe.' });
+      return;
+    }
+    if ((bill.tipogestion || 'Proyecto de Ley') !== 'Proyecto de Ley') {
+      res.status(400).json({ error: 'Los respaldos ciudadanos aplican solo a Proyectos de Ley.' });
       return;
     }
     const { name, email } = (req.body || {}) as { name?: string; email?: string };
@@ -375,9 +572,10 @@ async function startServer() {
       res.status(400).json({ error: 'El correo electrónico no es válido.' });
       return;
     }
-    const created = db.insertBillSupport({ billId: bill.id, name: cleanName, email: cleanEmail });
+    const created = await db.insertBillSupport({ billId: bill.id, name: cleanName, email: cleanEmail });
     if (!created) {
-      res.status(409).json({ error: 'Ya registraste tu respaldo a este proyecto de ley.', supportCount: db.countBillSupports(bill.id) });
+      const count = await db.countBillSupports(bill.id);
+      res.status(409).json({ error: 'Ya registraste tu respaldo a este proyecto de ley.', supportCount: count });
       return;
     }
     const emailed = await mail.sendBillSupportReceipt({
@@ -386,61 +584,86 @@ async function startServer() {
       billNumber: bill.number,
       billTitle: bill.title,
     });
+    const count = await db.countBillSupports(bill.id);
     res.status(201).json({
       ok: true,
       emailed,
-      supportCount: db.countBillSupports(bill.id),
+      supportCount: count,
       bill: { id: bill.id, number: bill.number, title: bill.title },
     });
   });
 
   /* ---------- API del Despacho (admin) ---------- */
 
-  // Inicio de sesión por email + clave. Devuelve un token de sesión (UUID).
-  app.post('/api/admin/auth', (req, res) => {
+  // Inicio de sesión por email + clave
+  app.post('/api/admin/auth', async (req, res) => {
     const { email, password } = (req.body || {}) as { email?: string; password?: string };
     if (!email || !password) {
       res.status(400).json({ error: 'Ingrese correo y clave del Despacho.' });
       return;
     }
-    const user = db.verifyUserCredential(email, password);
+    const ip = resolveClientIp(req);
+    const ipKey = `ip:${ip}`;
+    const emailKey = `email:${email.trim().toLowerCase()}`;
+    const preIp = loginLockState(ipKey);
+    const preMail = loginLockState(emailKey);
+    if (preIp.locked || preMail.locked) {
+      const retrySec = Math.max(preIp.retrySec, preMail.retrySec);
+      res.setHeader('Retry-After', String(retrySec));
+      res.status(429).json({ error: `Demasiados intentos fallidos. Vuelva a intentarlo en ${Math.max(1, Math.ceil(retrySec / 60))} minuto(s).` });
+      return;
+    }
+    const user = await db.verifyUserCredential(email, password);
     if (!user) {
-      db.audit(email.trim().toLowerCase(), 'LOGIN_FALLIDO');
+      recordLoginFail(ipKey);
+      recordLoginFail(emailKey);
+      await db.audit(email.trim().toLowerCase(), 'LOGIN_FALLIDO', undefined, undefined, { ip });
+      const postIp = loginLockState(ipKey);
+      const postMail = loginLockState(emailKey);
+      if (postIp.locked || postMail.locked) {
+        const retrySec = Math.max(postIp.retrySec, postMail.retrySec);
+        await db.audit(email.trim().toLowerCase(), 'LOGIN_BLOQUEADO', undefined, undefined, { ip, retrySec });
+        res.setHeader('Retry-After', String(retrySec));
+        res.status(429).json({ error: `Demasiados intentos fallidos. Vuelva a intentarlo en ${Math.max(1, Math.ceil(retrySec / 60))} minuto(s).` });
+        return;
+      }
       res.status(401).json({ error: 'Correo o clave incorrectos.' });
       return;
     }
-    if (user.is_active !== 1) {
+    if (!user.is_active) {
       res.status(403).json({ error: 'Su usuario del Despacho está desactivado. Contacte al administrador.' });
       return;
     }
-    const token = createSession(user);
-    db.audit(user.email, 'LOGIN_EXITOSO', 'user', String(user.id));
+    loginFails.delete(ipKey);
+    loginFails.delete(emailKey);
+    const token = await createSession(user);
+    await db.audit(user.email, 'LOGIN_EXITOSO', 'user', String(user.id), { ip });
     res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
   });
 
-  app.post('/api/admin/logout', requireAdmin, (req, res) => {
+  app.post('/api/admin/logout', requireAdmin, async (req, res) => {
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-    const session = getSession(token);
+    const session = await getSession(token);
     if (session) {
-      destroySession(token);
-      db.audit(session.email, 'LOGOUT', 'user');
+      await destroySession(token);
+      await db.audit(session.email, 'LOGOUT', 'user');
     }
     res.json({ ok: true });
   });
 
-  // Información de la sesión activa (para validar token al cargar el panel)
+  // Información de la sesión activa
   app.get('/api/admin/me', requireAdmin, (req, res) => {
     const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
     res.json({ email: s.email, name: s.name });
   });
 
   // Usuarios del Despacho
-  app.get('/api/admin/users', requireAdmin, (req, res) => {
-    res.json({ items: db.listUsers() });
+  app.get('/api/admin/users', requireAdmin, async (_req, res) => {
+    res.json({ items: await db.listUsers() });
   });
 
-  app.post('/api/admin/users', requireAdmin, (req, res) => {
+  app.post('/api/admin/users', requireAdmin, async (req, res) => {
     const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
     const { name, email, password } = (req.body || {}) as { name?: string; email?: string; password?: string };
     if (!name || !email || !password) {
@@ -455,43 +678,44 @@ async function startServer() {
       res.status(400).json({ error: 'La clave debe tener al menos 8 caracteres.' });
       return;
     }
-    if (db.getUserByEmail(email)) {
+    if (await db.getUserByEmail(email)) {
       res.status(409).json({ error: 'Ya existe un usuario con ese correo.' });
       return;
     }
-    const user = db.createUser({ name, email, password });
-    db.audit(s.email, 'USUARIO_CREADO', 'user', String(user.id), { email: user.email, name: user.name });
+    const user = await db.createUser({ name, email, password });
+    await db.audit(s.email, 'USUARIO_CREADO', 'user', String(user.id), { email: user.email, name: user.name });
     res.status(201).json(user);
   });
 
-  app.patch('/api/admin/users/:id', requireAdmin, (req, res) => {
+  app.patch('/api/admin/users/:id', requireAdmin, async (req, res) => {
     const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
     const id = Number(req.params.id);
-    const user = db.getUserById(id);
+    const user = await db.getUserById(id);
     if (!user) {
       res.status(404).json({ error: 'Usuario no encontrado.' });
       return;
     }
     const { isActive, password } = (req.body || {}) as { isActive?: boolean; password?: string };
     if (typeof isActive === 'boolean') {
-      db.setUserActive(id, isActive);
-      db.audit(s.email, 'USUARIO_ACTIVADO', 'user', String(id), { isActive });
+      await db.setUserActive(id, isActive);
+      await db.audit(s.email, 'USUARIO_ACTIVADO', 'user', String(id), { isActive });
     }
     if (password) {
       if (password.length < 8) {
         res.status(400).json({ error: 'La clave debe tener al menos 8 caracteres.' });
         return;
       }
-      db.setUserPassword(id, password);
-      db.audit(s.email, 'USUARIO_CLAVE', 'user', String(id));
+      await db.setUserPassword(id, password);
+      await db.audit(s.email, 'USUARIO_CLAVE', 'user', String(id));
     }
-    res.json(db.getUserById(id) && { id });
+    const updated = await db.getUserById(id);
+    res.json(updated && { id });
   });
 
-  app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
+  app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
     const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
     const id = Number(req.params.id);
-    const user = db.getUserById(id);
+    const user = await db.getUserById(id);
     if (!user) {
       res.status(404).json({ error: 'Usuario no encontrado.' });
       return;
@@ -500,51 +724,52 @@ async function startServer() {
       res.status(400).json({ error: 'No puede eliminarse a sí mismo.' });
       return;
     }
-    db.deleteUser(id);
-    db.audit(s.email, 'USUARIO_ELIMINADO', 'user', String(id), { email: user.email });
+    await db.deleteUser(id);
+    await db.audit(s.email, 'USUARIO_ELIMINADO', 'user', String(id), { email: user.email });
     res.json({ ok: true });
   });
 
   // Auditoría de acciones sensibles
-  app.get('/api/admin/audit', requireAdmin, (req, res) => {
+  app.get('/api/admin/audit', requireAdmin, async (req, res) => {
     const q = String(req.query.q || '');
     const limit = Math.min(Number(req.query.limit) || 100, 300);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
     res.json({
-      total: db.countAuditLog({ q }),
-      items: db.listAuditLog({ q, limit, offset }),
+      total: await db.countAuditLog({ q }),
+      items: await db.listAuditLog({ q, limit, offset }),
     });
   });
 
-  app.get('/api/admin/submissions', requireAdmin, (req, res) => {
+  app.get('/api/admin/submissions', requireAdmin, async (req, res) => {
     const s = String(req.query.status || '');
     const t = String(req.query.type || '');
     const p = String(req.query.proposalId || '');
     const q = String(req.query.q || '');
     const limit = Math.min(Number(req.query.limit) || 100, 200);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
-    const rows = db.listSubmissions({ status: s, type: t, proposalId: p, q, limit, offset });
+    const rows = await db.listSubmissions({ status: s, type: t, proposalId: p, q, limit, offset });
     res.json({
-      total: db.countSubmissions({ status: s, type: t, proposalId: p, q }),
+      total: await db.countSubmissions({ status: s, type: t, proposalId: p, q }),
       items: rows.map(serializeSubmission),
     });
   });
 
-  app.get('/api/admin/submissions/:id', requireAdmin, (req, res) => {
-    const row = db.getSubmissionById(req.params.id);
+  app.get('/api/admin/submissions/:id', requireAdmin, async (req, res) => {
+    const row = await db.getSubmissionById(req.params.id);
     if (!row) {
       res.status(404).json({ error: 'Radicado no encontrado.' });
       return;
     }
+    const docs = await db.listDocuments(row.id);
     res.json({
       ...serializeSubmission(row),
-      documents: db.listDocuments(row.id).map((d) => ({ id: d.id, filename: d.filename, mime: d.mime, size: d.size })),
+      documents: docs.map((d) => ({ id: d.id, filename: d.filename, mime: d.mime, size: d.size })),
     });
   });
 
-  app.patch('/api/admin/submissions/:id', requireAdmin, (req, res) => {
+  app.patch('/api/admin/submissions/:id', requireAdmin, async (req, res) => {
     const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
-    const row = db.getSubmissionById(req.params.id);
+    const row = await db.getSubmissionById(req.params.id);
     if (!row) {
       res.status(404).json({ error: 'Radicado no encontrado.' });
       return;
@@ -552,15 +777,16 @@ async function startServer() {
     const { status } = (req.body || {}) as { status?: string };
     if (status) {
       const from = row.status;
-      db.updateSubmissionStatus(row.id, status);
-      db.audit(s.email, 'ESTADO_CAMBIADO', 'submission', row.id, { from, to: status });
+      await db.updateSubmissionStatus(row.id, status);
+      await db.audit(s.email, 'ESTADO_CAMBIADO', 'submission', row.id, { from, to: status });
     }
-    res.json(serializeSubmission(db.getSubmissionById(row.id)!));
+    const updated = (await db.getSubmissionById(row.id))!;
+    res.json(serializeSubmission(updated));
   });
 
   app.post('/api/admin/submissions/:id/respond', requireAdmin, async (req, res) => {
     const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
-    const row = db.getSubmissionById(req.params.id);
+    const row = await db.getSubmissionById(req.params.id);
     if (!row) {
       res.status(404).json({ error: 'Radicado no encontrado.' });
       return;
@@ -570,45 +796,46 @@ async function startServer() {
       res.status(400).json({ error: 'La respuesta debe tener al menos 10 caracteres.' });
       return;
     }
-    const sub = serializeSubmission(db.getSubmissionById(row.id)!);
-    db.setSubmissionResponse(row.id, response.trim());
-    db.updateSubmissionStatus(row.id, 'Resuelto');
+    const sub = serializeSubmission((await db.getSubmissionById(row.id))!);
+    await db.setSubmissionResponse(row.id, response.trim());
+    await db.updateSubmissionStatus(row.id, 'Resuelto');
 
     let emailed = false;
     if (sendEmail && sub.email && mail.emailConfigured) {
       emailed = await mail.sendResponseToCitizen({ ...sub, aiResponse: response.trim(), status: 'Resuelto' });
-      if (emailed) db.markEmailsSent(row.id, true, false);
+      if (emailed) await db.markEmailsSent(row.id, true, false);
     }
-    db.audit(s.email, 'RESPUESTA', 'submission', row.id, { sendEmail, emailed });
-    res.json({ ...serializeSubmission(db.getSubmissionById(row.id)!), emailed });
+    await db.audit(s.email, 'RESPUESTA', 'submission', row.id, { sendEmail, emailed });
+    const final = (await db.getSubmissionById(row.id))!;
+    res.json({ ...serializeSubmission(final), emailed });
   });
 
-  app.post('/api/admin/submissions/:id/anonymize', requireAdmin, (req, res) => {
+  app.post('/api/admin/submissions/:id/anonymize', requireAdmin, async (req, res) => {
     const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
-    const row = db.getSubmissionById(req.params.id);
+    const row = await db.getSubmissionById(req.params.id);
     if (!row) {
       res.status(404).json({ error: 'Radicado no encontrado.' });
       return;
     }
-    db.anonymizeSubmission(row.id);
-    db.audit(s.email, 'ANONIMIZADO', 'submission', row.id);
+    await db.anonymizeSubmission(row.id);
+    await db.audit(s.email, 'ANONIMIZADO', 'submission', row.id);
     res.json({ ok: true, message: 'Radicado anonimizado. Los datos personales han sido eliminados.' });
   });
 
-  app.delete('/api/admin/submissions/:id', requireAdmin, (req, res) => {
+  app.delete('/api/admin/submissions/:id', requireAdmin, async (req, res) => {
     const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
-    const row = db.getSubmissionById(req.params.id);
+    const row = await db.getSubmissionById(req.params.id);
     if (!row) {
       res.status(404).json({ error: 'Radicado no encontrado.' });
       return;
     }
-    db.deleteSubmission(row.id);
-    db.audit(s.email, 'ELIMINADO', 'submission', row.id);
+    await db.deleteSubmission(row.id);
+    await db.audit(s.email, 'ELIMINADO', 'submission', row.id);
     res.json({ ok: true });
   });
 
-  app.get('/api/admin/submissions/:id/documents/:docId/file', requireAdmin, (req, res) => {
-    const doc = db.getDocumentById(Number(req.params.docId));
+  app.get('/api/admin/submissions/:id/documents/:docId/file', requireAdmin, async (req, res) => {
+    const doc = await db.getDocumentById(Number(req.params.docId));
     if (!doc || doc.submission_id !== req.params.id) {
       res.status(404).json({ error: 'Documento no encontrado.' });
       return;
@@ -622,36 +849,21 @@ async function startServer() {
     res.sendFile(filePath);
   });
 
-  // Extraer información de un proyecto de ley desde un PDF (Gemini analiza el PDF directamente)
-  app.post('/api/admin/bills/extract', requireAdmin, multerErrorWrapper(uploadBill.single('file')), async (req, res) => {
-    try {
-      const file = (req as express.Request & { file?: Express.Multer.File }).file;
-      if (!file) {
-        res.status(400).json({ error: 'Adjunte el PDF del proyecto de ley.' });
-        return;
-      }
-      const buffer = fs.readFileSync(file.path);
-      const extracted = await ai.extractBillFieldsFromPdf(buffer);
-      fs.unlink(file.path, () => {});
-      res.json(extracted);
-    } catch (err: any) {
-      console.error('Error extrayendo datos del PDF:', err);
-      res.status(500).json({ error: err.message || 'Error al procesar el PDF.' });
-    }
-  });
-
   // Proyectos de ley: administración
-  app.post('/api/admin/bills', requireAdmin, multerErrorWrapper(uploadBill.single('file')), (req, res) => {
+  app.post('/api/admin/bills', requireAdmin, multerErrorWrapper(uploadBill.single('file')), async (req, res) => {
     try {
       const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
-      const { title, number, dateFiled, status, stageDescription, summary, proposalIdRelated, impactScore, authors, initiatives } =
+      const { title, number, dateFiled, status, tipo, stageDescription, summary, proposalIdRelated, impactScore, authors, initiatives } =
         req.body as Record<string, string>;
       if (!title || !number) {
         res.status(400).json({ error: 'Título y número del proyecto son obligatorios.' });
         return;
       }
+      const tipogestion = tipo && ['Proyecto de Ley', 'Ponencia', 'Proposición', 'Moción', 'Otro'].includes(tipo)
+        ? tipo
+        : 'Proyecto de Ley';
       const file = (req as express.Request & { file?: Express.Multer.File }).file;
-      db.insertBill({
+      await db.insertBill({
         title: title.trim(),
         number: number.trim(),
         dateFiled,
@@ -662,29 +874,31 @@ async function startServer() {
         impactScore,
         authors: authors ? authors.split(',').map((s) => s.trim()).filter(Boolean) : [],
         initiatives: initiatives ? initiatives.split(';').map((s) => s.trim()).filter(Boolean) : [],
+        tipoGestion: tipogestion,
         stored_name: file ? path.basename(file.path) : undefined,
         filename: file ? file.originalname.slice(0, 200) : undefined,
         mime: file ? file.mimetype : undefined,
         size: file ? file.size : undefined,
       });
-      const created = db.listBills()[0];
-      db.audit(s.email, 'LEY_REGISTRADA', 'bill', String(created.id), { number: created.number, title: created.title });
-      res.status(201).json(serializeBill(created));
+      const allBills = await db.listBills();
+      const created = allBills[0];
+      await db.audit(s.email, 'LEY_REGISTRADA', 'bill', String(created.id), { number: created.number, title: created.title });
+      res.status(201).json(await serializeBill(created));
     } catch (err: any) {
       console.error('Error al registrar proyecto de ley:', err);
       res.status(500).json({ error: err.message || 'Error al registrar el proyecto de ley.' });
     }
   });
 
-  app.patch('/api/admin/bills/:id', requireAdmin, (req, res) => {
+  app.patch('/api/admin/bills/:id', requireAdmin, async (req, res) => {
     const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
-    const bill = db.getBillById(Number(req.params.id));
+    const bill = await db.getBillById(Number(req.params.id));
     if (!bill) {
       res.status(404).json({ error: 'Proyecto de ley no encontrado.' });
       return;
     }
     const b = (req.body || {}) as Record<string, string>;
-    const updated = db.updateBill(Number(req.params.id), {
+    const updated = await db.updateBill(Number(req.params.id), {
       status: b.status,
       stageDescription: b.stageDescription,
       proposalIdRelated: b.proposalIdRelated,
@@ -693,42 +907,151 @@ async function startServer() {
       number: b.number,
       dateFiled: b.dateFiled,
       summary: b.summary,
+      tipoGestion: b.tipo && ['Proyecto de Ley', 'Ponencia', 'Proposición', 'Moción', 'Otro'].includes(b.tipo) ? b.tipo : undefined,
       authors: b.authors !== undefined ? b.authors.split(',').map((x) => x.trim()).filter(Boolean) : undefined,
       initiatives: b.initiatives !== undefined ? b.initiatives.split(';').map((x) => x.trim()).filter(Boolean) : undefined,
     });
     if (b.status && b.status !== bill.status) {
-      db.audit(s.email, 'LEY_ESTADO_ACTUALIZADO', 'bill', String(bill.id), {
+      await db.audit(s.email, 'LEY_ESTADO_ACTUALIZADO', 'bill', String(bill.id), {
         number: bill.number,
         desde: bill.status,
         hacia: b.status,
       });
     } else {
-      db.audit(s.email, 'LEY_ACTUALIZADA', 'bill', String(bill.id), { number: bill.number });
+      await db.audit(s.email, 'LEY_ACTUALIZADA', 'bill', String(bill.id), { number: bill.number });
     }
-    res.json(serializeBill(updated!));
+    res.json(await serializeBill(updated!));
   });
 
-  app.delete('/api/admin/bills/:id', requireAdmin, (req, res) => {
+  app.delete('/api/admin/bills/:id', requireAdmin, async (req, res) => {
     const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
-    const bill = db.getBillById(Number(req.params.id));
+    const bill = await db.getBillById(Number(req.params.id));
     if (!bill) {
       res.status(404).json({ error: 'Proyecto de ley no encontrado.' });
       return;
     }
-    db.deleteBill(Number(req.params.id));
-    db.audit(s.email, 'LEY_ELIMINADA', 'bill', String(bill.id), { number: bill.number, title: bill.title });
+    await db.deleteBill(Number(req.params.id));
+    await db.audit(s.email, 'LEY_ELIMINADA', 'bill', String(bill.id), { number: bill.number, title: bill.title });
     res.json({ ok: true });
   });
 
-  app.get('/api/admin/bills/:id/supports', requireAdmin, (req, res) => {
-    const bill = db.getBillById(Number(req.params.id));
+  // Newsletter: listado admin
+  app.get('/api/admin/newsletter', requireAdmin, async (_req, res) => {
+    try {
+      const items = await db.listNewsletterSubscribers();
+      const count = await db.countNewsletterSubscribers();
+      res.json({
+        total: count,
+        items: items.map((s) => ({
+          id: s.id,
+          email: s.email,
+          source: s.source,
+          active: s.active,
+          createdAt: s.created_at,
+        })),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Error al listar suscriptores.' });
+    }
+  });
+
+  // Blog: administración
+  app.get('/api/admin/posts', requireAdmin, async (_req, res) => {
+    try {
+      const posts = await db.listBlogPosts();
+      res.json(posts.map(serializePost));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Error al listar publicaciones.' });
+    }
+  });
+
+  app.post('/api/admin/posts', requireAdmin, multerErrorWrapper(uploadBlogCover.single('image')), async (req, res) => {
+    try {
+      const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
+      const { title, excerpt, content, category, date, author, tags } = req.body as Record<string, string>;
+      if (!title?.trim() || !excerpt?.trim() || !content?.trim() || !category?.trim()) {
+        res.status(400).json({ error: 'Título, extracto, contenido y categoría son obligatorios.' });
+        return;
+      }
+      const file = (req as express.Request & { file?: Express.Multer.File }).file;
+      const id = `post-${crypto.randomUUID().slice(0, 8)}`;
+      const tagList = tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
+      await db.insertBlogPost({
+        id,
+        title: title.trim(),
+        excerpt: excerpt.trim(),
+        content: content.trim(),
+        category: category.trim(),
+        date: date || new Date().toISOString().slice(0, 10),
+        image: file ? `/blog-covers/${path.basename(file.path)}` : undefined,
+        author: (author || 'Ana Ligia Mora Martínez').trim(),
+        tags: tagList,
+      });
+      const created = await db.getBlogPostById(id);
+      await db.audit(s.email, 'BLOG_PUBLICADO', 'post', id, { title: title.trim() });
+      res.status(201).json(serializePost(created!));
+    } catch (err: any) {
+      console.error('Error al crear publicación:', err);
+      res.status(500).json({ error: err.message || 'Error al crear la publicación.' });
+    }
+  });
+
+  app.patch('/api/admin/posts/:id', requireAdmin, multerErrorWrapper(uploadBlogCover.single('image')), async (req, res) => {
+    try {
+      const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
+      const id = req.params.id;
+      const existing = await db.getBlogPostById(id);
+      if (!existing) {
+        res.status(404).json({ error: 'Publicación no encontrada.' });
+        return;
+      }
+      const b = (req.body || {}) as Record<string, string>;
+      const file = (req as express.Request & { file?: Express.Multer.File }).file;
+      const data: Parameters<typeof db.updateBlogPost>[1] = {};
+      if (b.title !== undefined) data.title = b.title.trim();
+      if (b.excerpt !== undefined) data.excerpt = b.excerpt.trim();
+      if (b.content !== undefined) data.content = b.content.trim();
+      if (b.category !== undefined) data.category = b.category.trim();
+      if (b.date !== undefined && b.date) data.date = b.date;
+      if (b.author !== undefined && b.author.trim()) data.author = b.author.trim();
+      if (b.tags !== undefined) data.tags = b.tags.split(',').map((t) => t.trim()).filter(Boolean);
+      if (file) {
+        if (existing.image && existing.image.startsWith('/blog-covers/')) {
+          fs.rm(path.join(db.uploadsBlogDir, path.basename(existing.image)), { force: true }, () => {});
+        }
+        data.image = `/blog-covers/${path.basename(file.path)}`;
+      }
+      const updated = await db.updateBlogPost(id, data);
+      await db.audit(s.email, 'BLOG_ACTUALIZADO', 'post', id, { title: updated!.title });
+      res.json(serializePost(updated!));
+    } catch (err: any) {
+      console.error('Error al actualizar publicación:', err);
+      res.status(500).json({ error: err.message || 'Error al actualizar la publicación.' });
+    }
+  });
+
+  app.delete('/api/admin/posts/:id', requireAdmin, async (req, res) => {
+    const s = (req as express.Request & { session?: { email: string; name: string } }).session!;
+    const post = await db.getBlogPostById(req.params.id);
+    if (!post) {
+      res.status(404).json({ error: 'Publicación no encontrada.' });
+      return;
+    }
+    await db.deleteBlogPost(post.id);
+    await db.audit(s.email, 'BLOG_ELIMINADO', 'post', post.id, { title: post.title });
+    res.json({ ok: true });
+  });
+
+  app.get('/api/admin/bills/:id/supports', requireAdmin, async (req, res) => {
+    const bill = await db.getBillById(Number(req.params.id));
     if (!bill) {
       res.status(404).json({ error: 'Proyecto de ley no encontrado.' });
       return;
     }
+    const supports = await db.listBillSupports(bill.id);
     res.json({
       bill: { id: bill.id, number: bill.number, title: bill.title },
-      supports: db.listBillSupports(bill.id).map((r) => ({
+      supports: supports.map((r) => ({
         id: r.id,
         name: r.name,
         email: r.email,
@@ -739,23 +1062,35 @@ async function startServer() {
 
   /* ---------- Frontend ---------- */
 
-  // Cualquier ruta /api no registrada responde JSON 404 (no cae al SPA)
+  app.use('/blog-covers', express.static(db.uploadsBlogDir));
+
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Recurso no encontrado.' });
+  });
+
+  // El bundle del servidor y los source maps nunca deben servirse
+  app.use((req, res, next) => {
+    const p = req.path;
+    if (p === '/server.cjs' || p === '/server.js' || p.endsWith('.map')) {
+      res.status(404).end();
+      return;
+    }
+    next();
   });
 
   const publicPath = path.join(process.cwd(), 'public');
   app.use(express.static(publicPath));
 
   const distPath = path.join(process.cwd(), 'dist');
-  const hasDist = fs.existsSync(distPath);
 
-  if (hasDist && process.env.NODE_ENV !== 'development') {
+  if (isProd) {
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get('*', (_req, res) => {
+      res.sendFile(distIndexPath);
     });
+    console.log('[Conf] Frontend: dist/ (producción)');
   } else {
+    console.log('[Conf] Frontend: Vite middleware (desarrollo)');
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -765,10 +1100,10 @@ async function startServer() {
   }
 
   const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, '0.0.0.0', async () => {
     console.log(`[Server] Portal Legislativo Ana Ligia Mora listo en el puerto ${PORT}`);
     console.log(`[Conf] Email ${mail.emailConfigured ? 'configurado (Resend)' : 'NO configurado'}`);
-    console.log(`[Conf] IA Triage ${process.env.GEMINI_API_KEY ? 'configurada (Google Gemini Flash)' : 'modo plantilla institucional'}`);
+    console.log('[Conf] Triage PQRSD: plantilla institucional (gestión manual del despacho — sin IA)');
     if (!mail.emailConfigured) {
       console.log('  ┌──────────────────────────────────────────────────────────────────────┐');
       console.log('  │  ⚠  CORREOS NO CONFIGURADOS                                            │');
@@ -780,19 +1115,20 @@ async function startServer() {
       console.log('  │  Configúrala en .env → https://resend.com                               │');
       console.log('  └──────────────────────────────────────────────────────────────────────┘');
     }
-    if (db.listUsers().length === 0) {
+    const users = await db.listUsers();
+    if (users.length === 0) {
       const adminName  = process.env.ADMIN_NAME;
       const adminEmail = process.env.ADMIN_EMAIL;
       const adminPass  = process.env.ADMIN_PASSWORD;
       if (adminName && adminEmail && adminPass) {
         try {
-          db.createUser({ name: adminName, email: adminEmail, password: adminPass });
+          await db.createUser({ name: adminName, email: adminEmail, password: adminPass });
           console.log(`[Conf] Usuario del Despacho creado automáticamente: ${adminEmail}`);
         } catch (e) {
           console.error('[Conf] Error al crear usuario inicial:', e);
         }
       } else {
-        console.warn('[Conf] No hay usuarios del Despacho. Defina ADMIN_NAME, ADMIN_EMAIL y ADMIN_PASSWORD en Railway para crearlos automáticamente.');
+        console.warn('[Conf] No hay usuarios del Despacho. Defina ADMIN_NAME, ADMIN_EMAIL y ADMIN_PASSWORD en .env para crearlos automáticamente.');
       }
     }
     const periodEnd = process.env.PERIOD_END_DATE || '';

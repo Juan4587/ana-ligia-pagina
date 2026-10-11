@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Proposal, SimulatorProfile, FiledBill } from './types';
+import { Proposal, FiledBill, Ponencia, BlogPost } from './types';
 
 export const PROPOSALS: Proposal[] = [
   {
@@ -123,172 +123,124 @@ export const PROPOSALS: Proposal[] = [
   }
 ];
 
-export const SIMULATOR_PROFILES: SimulatorProfile[] = [
+export const FILED_BILLS: FiledBill[] = [];
+
+export const PONENCIAS: Ponencia[] = [
   {
-    id: 'agricultor',
-    name: 'Agricultor / Productor Rural',
-    icon: 'Tractor',
-    description: 'Campesinos, caficultores, ganaderos y productores agrícolas de pequeña y mediana escala que buscan rentabilidad y sostenibilidad en el campo.',
-    relevance: [
-      {
-        proposalId: 'desarrollo-rural-jovenes',
-        level: 'MUY ALTA',
-        impact: 'high',
-        explanation: 'Incentivo económico directo, periódico y condicionado. Si estás registrado como sujeto campesino (RUSC), tu predio no supera la Unidad Agrícola Familiar (UAF) y firmas un Plan de Negocio y Gestión Ambiental, recibirás pagos periódicos por el cuidado del suelo, la agrobiodiversidad, las fuentes de agua y la transición a insumos limpios. El pago llega directo a tu cuenta del Banco Agrario, sin intermediarios, y se premia vender en circuitos cortos (mercados locales sin intermediarios).'
-      },
-      {
-        proposalId: 'pagos-servicios-ambientales',
-        level: 'ALTA',
-        impact: 'high',
-        explanation: 'Transferencia monetaria condicionada por cuidar y limpiar parques, corredores verdes, arbolado y espacios públicos. Se enfoca en hogares en condición de vulnerabilidad (Sisbén IV) y prioriza madres cabeza de familia, jóvenes y adultos mayores. Si vives en zona de ladera o periurbana, tus brigadas de mantenimiento ambiental pueden ser retribuidas por el municipio.'
-      },
-      {
-        proposalId: 'areas-protegidas-incentivos',
-        level: 'ALTA',
-        impact: 'high',
-        explanation: 'Las CAR podrán intervenir animales domésticos que se volvieron silvestres (perros y gatos asilvestrados) y amenazan tus cultivos, la fauna nativa y los ecosistemas. Las intervenciones exigen diagnóstico técnico previo y protocolos de bienestar animal; además, los municipios deben frenar el abandono que origina las jaurías.'
-      },
-      {
-        proposalId: 'agua-energia',
-        level: 'MEDIA',
-        impact: 'medium',
-        explanation: 'Los saldos no ejecutados del artículo 111 de la Ley 99 podrán recuperar ríos, quebradas y humedales de tu vereda, con acuerdos de conservación activa y prácticas agrícolas sin deforestación. Podrás vincularte como "Custodio del Agua" y participar en los sistemas de alerta temprana.'
-      }
-    ]
+    id: 'ponencia-1',
+    title: 'Ponencia sobre Gestión Integral del Agua',
+    type: 'Ponencia',
+    category: 'Agua',
+    date: '2026-01-15',
+    status: 'En trámite',
+    description: 'Ponencia presentada ante la Comisión Quinta sobre la gestión integral de recursos hídricos...',
+    shortDescription: 'Gestión integral del agua como eje de desarrollo territorial.',
+    author: 'Ana Ligia Mora Martínez',
+    acts: ['PL 120 de 2026'],
   },
   {
-    id: 'minero',
-    name: 'Minero Tradicional o Informal',
-    icon: 'Pickaxe',
-    description: 'Mineros tradicionales, barequeros y pequeños productores de oro de las regiones del Bajo Cauca, Nordeste y Occidente Antioqueño.',
-    relevance: [
-      {
-        proposalId: 'tramites-ambientales-fast-track',
-        level: 'MUY ALTA',
-        impact: 'high',
-        explanation: 'La ley reconoce la minería estratégica entre los proyectos de Utilidad Pública e Interés Social (DUP). Si formalizas tu operación, tus trámites ambientales tendrán tiempos perentorios: licencia ambiental en 35 días hábiles (o 40 con reunión de requerimientos) y concesiones de agua, vertimientos y aprovechamiento forestal en 25 días hábiles, con radicación digital. Si la autoridad se vence, el expediente va a Control Interno Disciplinario: la inoperancia del Estado no recae sobre ti.'
-      },
-      {
-        proposalId: 'agua-energia',
-        level: 'ALTA',
-        impact: 'high',
-        explanation: 'La gestión integral del agua y del suelo ordena el territorio y protege las cuencas donde operas, dándote un marco claro y estable para tu relación con las fuentes hídricas.'
-      },
-      {
-        proposalId: 'pagos-servicios-ambientales',
-        level: 'MEDIA',
-        impact: 'medium',
-        explanation: 'Las comunidades cercanas a tu zona reciben incentivos por cuidar los espacios verdes, lo que mejora el entorno y el relacionamiento con tu operación.'
-      }
-    ]
+    id: 'ponencia-2',
+    title: 'Proposición para el Fomento de Energías Renovables',
+    type: 'Proposición',
+    category: 'Energía',
+    date: '2026-02-20',
+    status: 'En análisis',
+    description: 'Proposición para incentivar la adopción de energías renovables en Antioquia...',
+    shortDescription: 'Fomento de energías limpias para el departamento.',
+    author: 'Equipo Técnico',
   },
-  {
-    id: 'joven',
-    name: 'Joven (15 a 28 años)',
-    icon: 'GraduationCap',
-    description: 'Estudiantes, jóvenes rurales y urbanos en búsqueda de empleo verde, tecnificación agrícola y oportunidades de emprendimiento ambiental.',
-    relevance: [
-      {
-        proposalId: 'pagos-servicios-ambientales',
-        level: 'MUY ALTA',
-        impact: 'high',
-        explanation: 'La ley obliga a los municipios a adoptar enfoques diferenciales garantizando la participación de la población joven. Puedes vincularte a las brigadas de jardinería, limpieza, siembra y pedagogía ambiental en los corredores verdes de tu ciudad como beneficiario directo de la transferencia.'
-      },
-      {
-        proposalId: 'desarrollo-rural-jovenes',
-        level: 'ALTA',
-        impact: 'high',
-        explanation: 'El pago se amplía (factor de retorno social) si en el predio o como titular se vincula formalmente a jóvenes rurales entre 18 y 28 años. Es una puerta de entrada al emprendimiento agroecológico con venta en circuitos cortos.'
-      },
-      {
-        proposalId: 'tramites-ambientales-fast-track',
-        level: 'MEDIA',
-        impact: 'medium',
-        explanation: 'Al destrabar licencias ambientales con tiempos definidos, se agiliza la inversión en infraestructura y transición energética, generando empleos verdes para tu generación.'
-      }
-    ]
-  },
-  {
-    id: 'empresario',
-    name: 'Empresario / Industrial',
-    icon: 'Briefcase',
-    description: 'Emprendedores, desarrolladores de infraestructura, ingenieros y generadores de energía que necesitan seguridad jurídica y agilidad estatal.',
-    relevance: [
-      {
-        proposalId: 'tramites-ambientales-fast-track',
-        level: 'MUY ALTA',
-        impact: 'high',
-        explanation: 'Aplica a infraestructura de transporte, energía, abastecimiento de agua, hidrocarburos, minería estratégica, férrea, portuaria, gestión del riesgo y transición energética. Radicación digital con admisibilidad automática, licencia ambiental en 35/40 días hábiles, demás trámites en 25 días, y decisiones con Formato Único de Justificación Técnica. El incumplimiento de términos afecta los indicadores de desempeño de la autoridad y se remite a Control Interno. Seguridad jurídica para tus inversiones.'
-      },
-      {
-        proposalId: 'agua-energia',
-        level: 'ALTA',
-        impact: 'high',
-        explanation: 'Sello "Aliado TESA" como criterio de desempate en licitaciones públicas, bonos de mayor edificabilidad si construyes un Ecoparque del Agua (EPA), y obras ambientales por impuestos en municipios PDET/ZOMAC. También una Ventanilla de Articulación TESA para tus proyectos de Soluciones Basadas en la Naturaleza.'
-      },
-      {
-        proposalId: 'desarrollo-rural-jovenes',
-        level: 'MEDIA',
-        impact: 'medium',
-        explanation: 'Puedes cumplir obligaciones de compensación ambiental cofinanciando predios PSA-Eco (incluido en el Manual de Compensaciones del Componente Biótico), y obtener el sello "Aliado del Campesinado y la Agroecología" comprando directamente a productores.'
-      }
-    ]
-  },
-  {
-    id: 'madre-cabeza',
-    name: 'Madre Cabeza de Hogar',
-    icon: 'HeartHandshake',
-    description: 'Mujeres líderes de hogar que asumen la responsabilidad única de sus familias y buscan autonomía económica y oportunidades comunitarias.',
-    relevance: [
-      {
-        proposalId: 'pagos-servicios-ambientales',
-        level: 'MUY ALTA',
-        impact: 'high',
-        explanation: 'Eres población prioritaria: la ley ordena enfoque diferencial con participación garantizada de mujeres cabeza de familia. Recibirás la transferencia por liderar brigadas de limpieza, jardinería, monitoreo y educación ambiental de los espacios verdes de tu barrio, priorizada por Sisbén IV.'
-      },
-      {
-        proposalId: 'desarrollo-rural-jovenes',
-        level: 'ALTA',
-        impact: 'high',
-        explanation: 'Si eres mujer rural cabeza de hogar, el pago se amplifica (factor de retorno social). Puedes migrar voluntariamente desde el PSA tradicional y recibir el incentivo directo, sin intermediarios, a través del Banco Agrario.'
-      },
-      {
-        proposalId: 'agua-energia',
-        level: 'MEDIA',
-        impact: 'medium',
-        explanation: 'Programas como "Guardianes TESOS" forman a tus hijos en ciencia ciudadana y los Ecoparques del Agua funcionan como aulas vivas cerca de tu comunidad.'
-      }
-    ]
-  },
-  {
-    id: 'ciudadano-comun',
-    name: 'Ciudadano Común / Habitante Urbano',
-    icon: 'UserCheck',
-    description: 'Residentes de las ciudades y municipios que buscan una mejor calidad de vida, seguridad democrática y cuidado de su entorno natural.',
-    relevance: [
-      {
-        proposalId: 'pagos-servicios-ambientales',
-        level: 'MUY ALTA',
-        impact: 'high',
-        explanation: 'Los barrios de menores ingresos tienen la menor cantidad de zonas verdes por habitante. La ley descentraliza su cuidado: más corredores verdes limpios, arbolado y pedagogía ambiental en tu comuna, con monitoreo comunitario y alertas ante el deterioro.'
-      },
-      {
-        proposalId: 'agua-energia',
-        level: 'ALTA',
-        impact: 'high',
-        explanation: 'Ecoparques del Agua como espacio público efectivo, Sistemas de Drenaje Urbano Sostenible (SUDS) y "ciudades esponja" reducen las inundaciones; los Sistemas de Alerta Temprana (SATA) avisan antes de los eventos extremos y se renaturalizan canales y quebradas urbanas.'
-      },
-      {
-        proposalId: 'areas-protegidas-incentivos',
-        level: 'MEDIA',
-        impact: 'medium',
-        explanation: 'La ley atiende las jaurías de perros y gatos asilvestrados que depredan la fauna nativa de tus parques y cerros, reduciendo también riesgos de zoonosis (rabia, toxoplasmosis), siempre con diagnóstico técnico y bienestar animal (Ley 1774 de 2016, sin sacrificio indiscriminado).'
-      }
-    ]
-  }
 ];
 
-export const FILED_BILLS: FiledBill[] = [];
+export const BLOG_POSTS: BlogPost[] = [
+  {
+    id: 'post-1',
+    title: 'Avances en la Ley de Servicios Ambientales: Lo que debes saber',
+    excerpt: 'La Comisión Quinta aprobó en primera vuelta el proyecto de ley que busca establecer un marco normativo claro para la gestión de servicios ambientales en todo el territorio nacional.',
+    content: 'Contenido completo del artículo sobre los avances legislativos en servicios ambientales.',
+    category: 'Legislación',
+    date: '2026-09-15',
+    image: '/blog-1.jpg',
+    author: 'Ana Ligia Mora Martínez',
+    tags: ['Legislación', 'Medio Ambiente', 'Comisión Quinta'],
+  },
+  {
+    id: 'post-2',
+    title: 'Rindiendo cuentas: Informe de gestión 2026',
+    excerpt: 'Un balance detallado de los primeros nueve meses de gestión legislativa, con cifras, logros y metas pendientes para el cierre del año.',
+    content: 'Contenido completo del informe de gestión.',
+    category: 'Comunidad',
+    date: '2026-09-10',
+    image: '/blog-2.jpg',
+    author: 'Ana Ligia Mora Martínez',
+    tags: ['Gestión', 'Comunidad', 'Rendición de cuentas'],
+  },
+  {
+    id: 'post-3',
+    title: 'El futuro del agua en Antioquia: la estrategia TESA',
+    excerpt: 'La estrategia Territorios Sostenibles por el Agua busca proteger y recuperar ríos, quebradas y humedales con participación ciudadana activa.',
+    content: 'Contenido completo sobre la estrategia TESA.',
+    category: 'Medio Ambiente',
+    date: '2026-09-05',
+    image: '/blog-3.jpg',
+    author: 'Ana Ligia Mora Martínez',
+    tags: ['Agua', 'Antioquia', 'Sostenibilidad'],
+  },
+  {
+    id: 'post-4',
+    title: 'Trabajo legislativo en la Comisión Quinta: avances del mes',
+    excerpt: 'Resumen de las sesiones más importantes de la Comisión Quinta del Senado, donde se discutieron proyectos clave para el desarrollo regional.',
+    content: 'Contenido completo sobre la Comisión Quinta.',
+    category: 'Legislación',
+    date: '2026-08-28',
+    image: '/blog-4.jpg',
+    author: 'Equipo Legislativo',
+    tags: ['Comisión Quinta', 'Legislación', 'Avances'],
+  },
+  {
+    id: 'post-5',
+    title: 'Participación ciudadana en proyectos de ley ambientales',
+    excerpt: 'Cómo los ciudadanos pueden involucrarse activamente en el proceso de discusión de proyectos de ley relacionados con el medio ambiente.',
+    content: 'Contenido completo sobre participación ciudadana.',
+    category: 'Comunidad',
+    date: '2026-08-20',
+    image: '/blog-5.jpg',
+    author: 'Ana Ligia Mora Martínez',
+    tags: ['Participación', 'Ciudadanía', 'Ambiente'],
+  },
+  {
+    id: 'post-6',
+    title: 'Conservación de bosques: una prioridad para Antioquia',
+    excerpt: 'Ante la deforestación creciente, presentamos nuevas propuestas legislativas para la protección de los bosques naturales del departamento.',
+    content: 'Contenido completo sobre conservación de bosques.',
+    category: 'Medio Ambiente',
+    date: '2026-08-12',
+    image: '/blog-6.jpg',
+    author: 'Equipo Legislativo',
+    tags: ['Bosques', 'Deforestación', 'Protección'],
+  },
+  {
+    id: 'post-7',
+    title: 'La importancia del Pago por Servicios Ambientales',
+    excerpt: 'El PSA-Eco representa una innovación en la forma de compensar económicamente a quienes cuidan nuestros ecosistemas naturales.',
+    content: 'Contenido completo sobre el PSA-Eco.',
+    category: 'Medio Ambiente',
+    date: '2026-08-05',
+    image: '/blog-7.jpg',
+    author: 'Ana Ligia Mora Martínez',
+    tags: ['PSA', 'Ecosistemas', 'Incentivos'],
+  },
+  {
+    id: 'post-8',
+    title: 'Diálogo con la ciudadanía: gira por municipios de Antioquia',
+    excerpt: 'Recorrido por los municipios para escuchar de primera mano las necesidades y preocupaciones de la comunidad antioqueña.',
+    content: 'Contenido completo sobre la gira municipal.',
+    category: 'Comunidad',
+    date: '2026-07-28',
+    image: '/blog-8.jpg',
+    author: 'Ana Ligia Mora Martínez',
+    tags: ['Gira', 'Municipios', 'Diálogo'],
+  },
+];
 
 /** Temas generales del eje legislativo para los proyectos de ley del Despacho. */
 export const BILL_TOPICS: { id: string; label: string }[] = [

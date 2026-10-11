@@ -8,4 +8,4 @@ cmds = ["npm ci --include=dev"]
 cmds = ["npm run build"]
 
 [start]
-cmd = "npm rebuild better-sqlite3 && NODE_ENV=production node dist/server.cjs"
+cmd = "npm rebuild better-sqlite3 && NODE_ENV=production node server-dist/server.cjs"

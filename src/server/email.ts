@@ -127,6 +127,32 @@ export async function sendResponseToCitizen(sub: EmailSubmission): Promise<boole
   }
 }
 
+export async function sendNewsletterWelcome(email: string): Promise<boolean> {
+  if (!resend || !email) return false;
+  const body =
+    `Gracias por suscribirte al Boletín Informativo del Despacho.\n\n` +
+    `Recibirás actualizaciones sobre la labor legislativa y los avances en proyectos clave.\n\n` +
+    `Atentamente,\nDepartamento Legislativo — Ana Ligia Mora Martínez.\n` +
+    `Sus datos personales están protegidos bajo la Ley 1581 de 2012 (Habeas Data) y se usan únicamente para enviarte este boletín.`;
+
+  try {
+    const { error } = await resend.emails.send({
+      from: from(),
+      to: [email],
+      subject: 'Suscripción al Boletín Informativo confirmada',
+      text: body,
+    });
+    if (error) {
+      console.error('[email] Error bienvenida newsletter:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[email] Error bienvenida newsletter:', err);
+    return false;
+  }
+}
+
 export async function sendBillSupportReceipt(opts: {
   name: string;
   email: string;
