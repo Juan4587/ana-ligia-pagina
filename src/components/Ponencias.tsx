@@ -8,7 +8,7 @@ import {
   FileText, Calendar, CheckCircle2, Clock, ArrowRight,
   Filter, Search, X, Loader2
 } from 'lucide-react';
-import { PONENCIAS } from '../data';
+
 import { Ponencia } from '../types';
 import { getStatusStyles, getTypeColor, mapStatusToBucket, GESTION_STATUS_BUCKETS } from './legislativeStyles';
 
@@ -28,6 +28,7 @@ const getCategoryColor = (category: string) => {
 export default function Ponencias() {
   const [ponencias, setPonencias] = React.useState<Ponencia[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState(false);
   const [activeCategory, setActiveCategory] = React.useState<string>('Todos');
   const [activeStatusFilter, setActiveStatusFilter] = React.useState<string>('Todos');
   const [searchQuery, setSearchQuery] = React.useState<string>('');
@@ -35,9 +36,12 @@ export default function Ponencias() {
 
   React.useEffect(() => {
     fetch('/api/ponencias')
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data: Ponencia[]) => setPonencias(data.length ? data : PONENCIAS))
-      .catch(() => setPonencias(PONENCIAS))
+      .then((response) => {
+        if (!response.ok) throw new Error('Error cargando ponencias');
+        return response.json();
+      })
+      .then((data: Ponencia[]) => setPonencias(data))
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, []);
 
@@ -76,6 +80,42 @@ export default function Ponencias() {
     return (
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 bg-neutral-50 min-h-screen flex items-center justify-center">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 bg-neutral-50 min-h-screen">
+        <div className="text-center max-w-3xl mx-auto mb-10">
+          <span className="inline-block bg-primary-light text-primary text-xs font-semibold uppercase tracking-widest px-3 py-1 rounded-full mb-3">
+            Ponencias y Proposiciones
+          </span>
+          <h2 className="text-3xl font-extrabold text-neutral-900 sm:text-4xl">
+            Ponencias y Proposiciones
+          </h2>
+        </div>
+        <p className="text-neutral-600 mt-6 text-center">
+          No se pudieron cargar las ponencias. Inténtelo de nuevo más tarde.
+        </p>
+      </div>
+    );
+  }
+
+  if (ponencias.length === 0) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 bg-neutral-50 min-h-screen">
+        <div className="text-center max-w-3xl mx-auto mb-10">
+          <span className="inline-block bg-primary-light text-primary text-xs font-semibold uppercase tracking-widest px-3 py-1 rounded-full mb-3">
+            Ponencias y Proposiciones
+          </span>
+          <h2 className="text-3xl font-extrabold text-neutral-900 sm:text-4xl">
+            Ponencias y Proposiciones
+          </h2>
+        </div>
+        <p className="text-neutral-600 mt-6 text-center">
+          Todavía no hay ponencias cargadas.
+        </p>
       </div>
     );
   }

@@ -8,7 +8,7 @@ import {
   FileText, Calendar, Clock, ArrowRight, Search, Tag,
   X, Heart, Share2, User, RefreshCw
 } from 'lucide-react';
-import { BLOG_POSTS } from '../data';
+
 import { BlogPost } from '../types';
 import BlogCard from './BlogCard';
 
@@ -32,6 +32,7 @@ export default function Blog() {
   const [selectedPost, setSelectedPost] = React.useState<BlogPost | null>(null);
   const [newsletterEmail, setNewsletterEmail] = React.useState('');
   const [newsletterStatus, setNewsletterStatus] = React.useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
+  const [loadError, setLoadError] = React.useState(false);
   const [newsletterMsg, setNewsletterMsg] = React.useState('');
 
   React.useEffect(() => {
@@ -50,12 +51,15 @@ export default function Blog() {
       });
     };
     fetch('/api/posts')
-      .then((r) => (r.ok ? r.json() : []))
+      .then((response) => {
+        if (!response.ok) throw new Error('Error cargando publicaciones');
+        return response.json();
+      })
       .then((data) => {
         const posts = normalize(data);
-        setPosts(posts.length ? posts : BLOG_POSTS);
+        setPosts(posts);
       })
-      .catch(() => setPosts(BLOG_POSTS))
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, []);
 
@@ -85,6 +89,30 @@ export default function Blog() {
     return (
       <div className="flex justify-center items-center py-32">
         <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-neutral-50">
+        <section className="bg-[#1C5060] text-white">
+          <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
+            <div className="max-w-3xl space-y-6">
+              <span className="inline-block bg-white/20 text-white text-xs font-semibold tracking-[0.2em] uppercase px-3 py-1 rounded-full backdrop-blur-sm">
+                Blog Informativo
+              </span>
+              <h1 className="text-4xl font-bold font-serif leading-tight sm:text-5xl">
+                Blog Informativo
+              </h1>
+            </div>
+          </div>
+        </section>
+        <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <p className="text-neutral-600 mt-6 text-center">
+            No se pudieron cargar las publicaciones. Inténtelo de nuevo más tarde.
+          </p>
+        </main>
       </div>
     );
   }
@@ -252,11 +280,36 @@ export default function Blog() {
 
               {filteredPosts.length === 0 ? (
                 <div className="text-center py-16 bg-white border border-neutral-200 rounded-2xl">
-                  <Search className="h-12 w-12 mx-auto text-neutral-300 mb-4" />
-                  <h4 className="text-lg font-bold text-neutral-700 mb-2">No se encontraron artículos</h4>
-                  <p className="text-sm text-neutral-500">
-                    Intenta con otros términos de búsqueda o selecciona otra categoría.
-                  </p>
+                  {posts.length === 0 && !searchQuery && activeCategory === 'Todos' ? (
+                    <>
+                      <h4 className="text-lg font-bold text-neutral-700 mb-2">
+                        Todavía no hay publicaciones cargadas.
+                      </h4>
+                      <p className="text-sm text-neutral-500">
+                        Las publicaciones aparecerán aquí una vez que se agreguen al sistema.
+                      </p>
+                    </>
+                  ) : searchQuery || activeCategory !== 'Todos' ? (
+                    <>
+                      <Search className="h-12 w-12 mx-auto text-neutral-300 mb-4" />
+                      <h4 className="text-lg font-bold text-neutral-700 mb-2">
+                        No se encontraron artículos
+                      </h4>
+                      <p className="text-sm text-neutral-500">
+                        Intenta con otros términos de búsqueda o selecciona otra categoría.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h4 className="text-lg font-bold text-neutral-700 mb-2">
+                        No hay más artículos para mostrar
+                      </h4>
+                      <p className="text-sm text-neutral-500">
+                        La publicación destacada se muestra arriba.
+                        No hay artículos adicionales.
+                      </p>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="grid gap-6 sm:grid-cols-2">

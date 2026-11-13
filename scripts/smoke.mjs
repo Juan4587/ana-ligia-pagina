@@ -18,6 +18,38 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Protección: no ejecutar smoke contra base de datos de Render ni contra sitios remotos.
+const dbUrl = process.env.DATABASE_URL || '';
+if (dbUrl) {
+  try {
+    const dbHost = new URL(dbUrl).hostname.toLowerCase();
+    if (dbHost === 'render.com' || dbHost.endsWith('.render.com')) {
+      console.error('Abortando smoke: DATABASE_URL apunta a un host de Render.');
+      process.exit(1);
+    }
+  } catch {
+    console.error('Abortando smoke: DATABASE_URL inválido.');
+    process.exit(1);
+  }
+}
+
+const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+try {
+  const parsed = new URL(baseUrl);
+  let host = parsed.hostname.toLowerCase();
+  if (host.startsWith('[') && host.endsWith(']')) {
+    host = host.slice(1, -1);
+  }
+  const localHosts = ['localhost', '127.0.0.1', '::1'];
+  if (!localHosts.includes(host)) {
+    console.error('Abortando smoke: APP_URL no apunta a localhost.');
+    process.exit(1);
+  }
+} catch {
+  console.error('Abortando smoke: APP_URL inválido.');
+  process.exit(1);
+}
+
 const BASE = (process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
 const TEST_EMAIL = 'test-admin@despacho.co';
 const TEST_PASS = 'test-admin-clave-segura';

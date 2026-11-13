@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Proposal, FiledBill, Ponencia, BlogPost } from './types';
+import { Proposal, FiledBill, Ponencia } from './types';
 
 export const PROPOSALS: Proposal[] = [
   {
@@ -151,96 +151,7 @@ export const PONENCIAS: Ponencia[] = [
   },
 ];
 
-export const BLOG_POSTS: BlogPost[] = [
-  {
-    id: 'post-1',
-    title: 'Avances en la Ley de Servicios Ambientales: Lo que debes saber',
-    excerpt: 'La Comisión Quinta aprobó en primera vuelta el proyecto de ley que busca establecer un marco normativo claro para la gestión de servicios ambientales en todo el territorio nacional.',
-    content: 'Contenido completo del artículo sobre los avances legislativos en servicios ambientales.',
-    category: 'Legislación',
-    date: '2026-09-15',
-    image: '/blog-1.jpg',
-    author: 'Ana Ligia Mora Martínez',
-    tags: ['Legislación', 'Medio Ambiente', 'Comisión Quinta'],
-  },
-  {
-    id: 'post-2',
-    title: 'Rindiendo cuentas: Informe de gestión 2026',
-    excerpt: 'Un balance detallado de los primeros nueve meses de gestión legislativa, con cifras, logros y metas pendientes para el cierre del año.',
-    content: 'Contenido completo del informe de gestión.',
-    category: 'Comunidad',
-    date: '2026-09-10',
-    image: '/blog-2.jpg',
-    author: 'Ana Ligia Mora Martínez',
-    tags: ['Gestión', 'Comunidad', 'Rendición de cuentas'],
-  },
-  {
-    id: 'post-3',
-    title: 'El futuro del agua en Antioquia: la estrategia TESA',
-    excerpt: 'La estrategia Territorios Sostenibles por el Agua busca proteger y recuperar ríos, quebradas y humedales con participación ciudadana activa.',
-    content: 'Contenido completo sobre la estrategia TESA.',
-    category: 'Medio Ambiente',
-    date: '2026-09-05',
-    image: '/blog-3.jpg',
-    author: 'Ana Ligia Mora Martínez',
-    tags: ['Agua', 'Antioquia', 'Sostenibilidad'],
-  },
-  {
-    id: 'post-4',
-    title: 'Trabajo legislativo en la Comisión Quinta: avances del mes',
-    excerpt: 'Resumen de las sesiones más importantes de la Comisión Quinta del Senado, donde se discutieron proyectos clave para el desarrollo regional.',
-    content: 'Contenido completo sobre la Comisión Quinta.',
-    category: 'Legislación',
-    date: '2026-08-28',
-    image: '/blog-4.jpg',
-    author: 'Equipo Legislativo',
-    tags: ['Comisión Quinta', 'Legislación', 'Avances'],
-  },
-  {
-    id: 'post-5',
-    title: 'Participación ciudadana en proyectos de ley ambientales',
-    excerpt: 'Cómo los ciudadanos pueden involucrarse activamente en el proceso de discusión de proyectos de ley relacionados con el medio ambiente.',
-    content: 'Contenido completo sobre participación ciudadana.',
-    category: 'Comunidad',
-    date: '2026-08-20',
-    image: '/blog-5.jpg',
-    author: 'Ana Ligia Mora Martínez',
-    tags: ['Participación', 'Ciudadanía', 'Ambiente'],
-  },
-  {
-    id: 'post-6',
-    title: 'Conservación de bosques: una prioridad para Antioquia',
-    excerpt: 'Ante la deforestación creciente, presentamos nuevas propuestas legislativas para la protección de los bosques naturales del departamento.',
-    content: 'Contenido completo sobre conservación de bosques.',
-    category: 'Medio Ambiente',
-    date: '2026-08-12',
-    image: '/blog-6.jpg',
-    author: 'Equipo Legislativo',
-    tags: ['Bosques', 'Deforestación', 'Protección'],
-  },
-  {
-    id: 'post-7',
-    title: 'La importancia del Pago por Servicios Ambientales',
-    excerpt: 'El PSA-Eco representa una innovación en la forma de compensar económicamente a quienes cuidan nuestros ecosistemas naturales.',
-    content: 'Contenido completo sobre el PSA-Eco.',
-    category: 'Medio Ambiente',
-    date: '2026-08-05',
-    image: '/blog-7.jpg',
-    author: 'Ana Ligia Mora Martínez',
-    tags: ['PSA', 'Ecosistemas', 'Incentivos'],
-  },
-  {
-    id: 'post-8',
-    title: 'Diálogo con la ciudadanía: gira por municipios de Antioquia',
-    excerpt: 'Recorrido por los municipios para escuchar de primera mano las necesidades y preocupaciones de la comunidad antioqueña.',
-    content: 'Contenido completo sobre la gira municipal.',
-    category: 'Comunidad',
-    date: '2026-07-28',
-    image: '/blog-8.jpg',
-    author: 'Ana Ligia Mora Martínez',
-    tags: ['Gira', 'Municipios', 'Diálogo'],
-  },
-];
+
 
 /** Temas generales del eje legislativo para los proyectos de ley del Despacho. */
 export const BILL_TOPICS: { id: string; label: string }[] = [

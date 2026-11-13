@@ -9,7 +9,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
-import { PROPOSALS, PONENCIAS, BLOG_POSTS } from './src/data.js';
+import { PROPOSALS } from './src/data.js';
 import * as db from './src/server/db.js';
 import { decrypt } from './src/server/crypto.js';
 import * as mail from './src/server/email.js';
@@ -341,27 +341,10 @@ async function startServer() {
     try {
       const bills = await db.listBills();
       const items = bills.map(serializePonenciaFromBill);
-      if (items.length === 0) {
-        // Seed from data.ts if DB is empty
-        for (const p of PONENCIAS) {
-          await db.insertBill({
-            title: p.title,
-            number: String(p.id),
-            dateFiled: p.date,
-            status: p.status,
-            stageDescription: p.shortDescription,
-            summary: p.description,
-            authors: [p.author],
-            initiatives: p.acts || [],
-            tipoGestion: p.type,
-          });
-        }
-        const seeded = await db.listBills();
-        return res.json(seeded.map(serializePonenciaFromBill));
-      }
       res.json(items);
     } catch {
-      res.json(PONENCIAS);
+      console.error('[GET /api/ponencias] error de base de datos');
+      res.status(500).json({ error: 'Error interno del servidor.' });
     }
   });
 
@@ -369,16 +352,10 @@ async function startServer() {
   app.get('/api/posts', async (_req, res) => {
     try {
       const posts = await db.listBlogPosts();
-      if (posts.length === 0) {
-        for (const p of BLOG_POSTS) {
-          await db.insertBlogPost(p);
-        }
-        const seeded = await db.listBlogPosts();
-        return res.json(seeded.map(serializePost));
-      }
       res.json(posts.map(serializePost));
     } catch {
-      res.json(BLOG_POSTS);
+      console.error('[GET /api/posts] error de base de datos');
+      res.status(500).json({ error: 'Error interno del servidor.' });
     }
   });
 
